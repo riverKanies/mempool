@@ -1,0 +1,30 @@
+<div class="box">
+  <div class="row">
+    <div class="col-md">
+      <h4 i18n="address.cluster.first-transaction">First Transaction</h4>
+      <div *ngIf="isLoading" class="text-center">
+        <span class="skeleton-loader"></span>
+      </div>
+      <div *ngIf="!isLoading">
+        <div *ngIf="firstTransaction; else noTransactions">
+          <div class="transaction-box">
+            <a [routerLink]="['/tx/' | relativeUrl, firstTransaction.txid]">
+              <span class="transaction-id">{{ firstTransaction.txid }}</span>
+            </a>
+            <div class="transaction-date">
+              <ng-container *ngIf="firstTransaction.status?.confirmed; else unconfirmed">
+                {{ firstTransaction.status.block_time * 1000 | date:'medium' }}
+              </ng-container>
+              <ng-template #unconfirmed>
+                <i i18n="transaction.unconfirmed">Unconfirmed</i>
+              </ng-template>
+            </div>
+          </div>
+        </div>
+        <ng-template #noTransactions>
+          <div class="text-center" i18n="address.cluster.no-transactions">No transactions found for this address.</div>
+        </ng-template>
+      </div>
+    </div>
+  </div>
+</div> 

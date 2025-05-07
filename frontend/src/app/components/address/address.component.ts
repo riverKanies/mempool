@@ -12,6 +12,7 @@ import { SeoService } from '@app/services/seo.service';
 import { seoDescriptionNetwork } from '@app/shared/common.utils';
 import { AddressInformation } from '@interfaces/node-api.interface';
 import { AddressTypeInfo } from '@app/shared/address-utils';
+import { ClusterComponent } from './cluster/cluster.component';
 
 class AddressStats implements ChainStats {
   address: string;

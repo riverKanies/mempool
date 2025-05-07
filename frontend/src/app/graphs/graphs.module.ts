@@ -41,6 +41,7 @@ import { UtxoGraphComponent } from '@components/utxo-graph/utxo-graph.component'
 import { ActiveAccelerationBox } from '@components/acceleration/active-acceleration-box/active-acceleration-box.component';
 import { AddressesTreemap } from '@components/addresses-treemap/addresses-treemap.component';
 import { TaprootAddressScriptsComponent } from '@components/taproot-address-scripts/taproot-address-scripts.component';
+import { ClusterComponent } from '@components/address/cluster/cluster.component';
 import { CommonModule } from '@angular/common';
 import { AsmStylerPipe } from '@app/shared/pipes/asm-styler/asm-styler.pipe';
 
@@ -50,6 +51,7 @@ import { AsmStylerPipe } from '@app/shared/pipes/asm-styler/asm-styler.pipe';
     CustomDashboardComponent,
     MempoolBlockComponent,
     AddressComponent,
+    ClusterComponent,
     WalletComponent,
     WalletPreviewComponent,
 
@@ -86,6 +88,7 @@ import { AsmStylerPipe } from '@app/shared/pipes/asm-styler/asm-styler.pipe';
     ActiveAccelerationBox,
     AddressesTreemap,
     TaprootAddressScriptsComponent,
+    ClusterComponent,
   ],
   imports: [
     CommonModule,

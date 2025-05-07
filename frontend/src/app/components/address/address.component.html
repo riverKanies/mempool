@@ -73,6 +73,15 @@
       </div>
     </div>
 
+    <!-- Add the cluster component here -->
+    <ng-container *ngIf="(stateService.backend$ | async) === 'esplora' && address && transactions && transactions.length > 0">
+      <br>
+      <div class="title-tx">
+        <h2 class="text-left" i18n="address.cluster-analysis">Cluster Analysis</h2>
+      </div>
+      <app-address-cluster [transactions]="transactions" [addressString]="addressString"></app-address-cluster>
+    </ng-container>
+
     <ng-container *ngIf="hasTapTree"> 
       <br>
       <div class="title-tx">
