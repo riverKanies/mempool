@@ -25,16 +25,29 @@
 
 .svg-container {
   width: 100%;
-  position: relative;
+  overflow: auto;
 }
 
-.cluster-node {
-  fill: #64b5f6;
-  stroke: #1976d2;
-  stroke-width: 2px;
-}
 
-.cluster-link {
-  stroke: #333;
-  stroke-width: 2px;
+
+.legend {
+  font-size: 14px;
+  
+  .legend-circle {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    margin-right: 8px;
+    
+    &.cluster-node {
+      background-color: #4caf50;
+      border: 2px solid #2e7d32;
+    }
+    
+    &.external-node {
+      background-color: #2196f3;
+      border: 2px solid #0d47a1;
+    }
+  }
 }

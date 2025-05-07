@@ -23,6 +23,33 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   private startX = 0;
   private startY = 0;
   
+  // Visualization properties
+  private nodeRadius = 20;
+  private horizontalSpacing = 100;
+  private verticalSpacing = 80;
+  private svgWidth = 0;
+  private svgHeight = 0;
+  
+  // At the class level
+  private readonly clusterNodeStyles = {
+    fill: '#4caf50',
+    fillHover: '#81c784',
+    stroke: '#2e7d32',
+    strokeWidth: '2px'
+  };
+
+  private readonly externalNodeStyles = {
+    fill: '#2196f3',
+    fillHover: '#64b5f6',
+    stroke: '#0d47a1',
+    strokeWidth: '2px'
+  };
+
+  private readonly linkStyles = {
+    stroke: '#555',
+    strokeWidth: '2'
+  };
+  
   // Computed transform property for SVG
   get transform(): string {
     return `translate(${this.translateX}, ${this.translateY}) scale(${this.scale})`;
@@ -30,18 +57,156 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   
   // View box for SVG
   get viewBox(): string {
-    return '0 0 300 200';
+    return `0 0 ${this.svgWidth || 800} ${this.svgHeight || 300}`;
   }
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes.transactions && this.transactions?.length) {
       this.isLoading = false;
-      this.firstTransaction = this.transactions[0];
+      this.firstTransaction = this.transactions[this.transactions.length - 1]; // Get the oldest transaction
+      
+      // After data is loaded, render the visualization
+      setTimeout(() => this.renderTransactionFlow(), 0);
     }
   }
   
   ngAfterViewInit() {
     this.initializeZoom();
+    if (this.transactions?.length) {
+      this.renderTransactionFlow();
+    }
+  }
+  
+  private renderTransactionFlow() {
+    if (!this.clusterSvg || !this.transactions.length) return;
+    
+    const svg = this.clusterSvg.nativeElement;
+    const g = svg.querySelector('g');
+    
+    // Clear previous content
+    while (g.firstChild) {
+      g.removeChild(g.firstChild);
+    }
+    
+    // Reverse transactions to start with the oldest
+    const orderedTransactions = [...this.transactions].reverse();
+    
+    // Calculate SVG dimensions based on transaction count
+    this.svgWidth = Math.max(800, orderedTransactions.length * this.horizontalSpacing + 100);
+    this.svgHeight = 300;
+    
+    // Create nodes and connections
+    orderedTransactions.forEach((tx, index) => {
+      const x = 50 + index * this.horizontalSpacing;
+      const y = 80;
+      
+      // Create node for the address we're focusing on
+      this.createNode(g, x, y, tx.txid);
+      
+      // If not the first transaction, create connection from previous
+      if (index > 0) {
+        this.createHorizontalArrow(g, x - this.horizontalSpacing, y, x, y);
+      }
+      
+      // For all except coinbase, create external payment node
+      if (index > 0 || !this.isCoinbase(tx)) {
+        const externalY = y + this.verticalSpacing;
+        this.createNode(g, x, externalY, tx.txid, 'external');
+        
+        // Create S-shaped connection to external payment
+        this.createSCurve(g, x - this.horizontalSpacing, y, x, externalY);
+      }
+    });
+  }
+  
+  private createNode(parent: SVGElement, x: number, y: number, txid: string, type: 'address' | 'external' = 'address') {
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', x.toString());
+    circle.setAttribute('cy', y.toString());
+    circle.setAttribute('r', this.nodeRadius.toString());
+    
+    // Apply styles directly to the element
+    if (type === 'address') {
+      circle.setAttribute('class', 'cluster-node');
+      circle.setAttribute('fill', this.clusterNodeStyles.fill);
+      circle.setAttribute('stroke', this.clusterNodeStyles.stroke);
+      circle.setAttribute('stroke-width', this.clusterNodeStyles.strokeWidth);
+      circle.setAttribute('cursor', 'pointer');
+      // Add hover effect with JavaScript since we can't use CSS :hover
+      circle.addEventListener('mouseenter', () => {
+        circle.setAttribute('fill', this.clusterNodeStyles.fillHover);
+      });
+      circle.addEventListener('mouseleave', () => {
+        circle.setAttribute('fill', this.clusterNodeStyles.fill);
+      });
+    } else {
+      circle.setAttribute('class', 'external-node');
+      circle.setAttribute('fill', this.externalNodeStyles.fill);
+      circle.setAttribute('stroke', this.externalNodeStyles.stroke);
+      circle.setAttribute('stroke-width', this.externalNodeStyles.strokeWidth);
+      circle.setAttribute('cursor', 'pointer');
+      // Add hover effect with JavaScript
+      circle.addEventListener('mouseenter', () => {
+        circle.setAttribute('fill', this.externalNodeStyles.fillHover);
+      });
+      circle.addEventListener('mouseleave', () => {
+        circle.setAttribute('fill', this.externalNodeStyles.fill);
+      });
+    }
+    
+    circle.setAttribute('data-txid', txid);
+    
+    // Add click event to navigate to transaction
+    circle.addEventListener('click', () => {
+      window.location.href = `/tx/${txid}`;
+    });
+    
+    parent.appendChild(circle);
+    
+    // Add tooltip with truncated txid
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', x.toString());
+    text.setAttribute('y', (y + this.nodeRadius + 15).toString());
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('class', 'node-label');
+    text.setAttribute('fill', '#333');
+    text.setAttribute('font-size', '12px');
+    text.setAttribute('user-select', 'none');
+    text.textContent = txid.substring(0, 6) + '...';
+    parent.appendChild(text);
+  }
+  
+  private createHorizontalArrow(parent: SVGElement, x1: number, y1: number, x2: number, y2: number) {
+    const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    arrow.setAttribute('x1', (x1 + this.nodeRadius).toString());
+    arrow.setAttribute('y1', y1.toString());
+    arrow.setAttribute('x2', (x2 - this.nodeRadius).toString());
+    arrow.setAttribute('y2', y2.toString());
+    arrow.setAttribute('stroke', this.linkStyles.stroke);
+    arrow.setAttribute('stroke-width', this.linkStyles.strokeWidth);
+    arrow.setAttribute('marker-end', 'url(#arrowhead)');
+    arrow.setAttribute('class', 'cluster-link');
+    parent.appendChild(arrow);
+  }
+  
+  private createSCurve(parent: SVGElement, x1: number, y1: number, x2: number, y2: number) {
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    const controlX1 = x1 + this.horizontalSpacing * 0.5;
+    const controlY1 = y1;
+    const controlX2 = x2 - this.horizontalSpacing * 0.5;
+    const controlY2 = y2;
+    
+    path.setAttribute('d', `M ${x1 + this.nodeRadius} ${y1} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${x2 - this.nodeRadius} ${y2}`);
+    path.setAttribute('stroke', this.linkStyles.stroke);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke-width', this.linkStyles.strokeWidth);
+    path.setAttribute('marker-end', 'url(#arrowhead)');
+    path.setAttribute('class', 'cluster-link');
+    parent.appendChild(path);
+  }
+  
+  private isCoinbase(tx: Transaction): boolean {
+    return tx.vin.some(input => input.is_coinbase);
   }
   
   private initializeZoom() {

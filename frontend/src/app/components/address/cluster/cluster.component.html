@@ -31,14 +31,29 @@
   <!-- Cluster visualization with zoom functionality -->
   <div class="cluster-visualization">
     <div class="svg-container" #svgContainer>
-      <svg #clusterSvg [attr.viewBox]="viewBox" width="100%" height="250">
+      <svg #clusterSvg [attr.viewBox]="viewBox" width="100%" height="300">
+        <!-- Define arrowhead marker -->
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" 
+                  refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="black" />
+          </marker>
+        </defs>
         <g [attr.transform]="transform">
-          <circle cx="75" cy="100" r="30" class="cluster-node"></circle>
-          <path d="M 75 100 C 125 50, 175 150, 225 100" stroke="black" fill="none" stroke-width="3" class="cluster-link"></path>
-          <circle cx="225" cy="100" r="30" class="cluster-node"></circle>
+          <!-- Transaction nodes and connections will be added here dynamically -->
         </g>
       </svg>
     </div>
   </div>
   
+  <div class="legend mt-3">
+    <div class="d-flex align-items-center mb-2">
+      <div class="legend-circle cluster-node mr-2"></div>
+      <span i18n="address.cluster.address-node">Address Payments</span>
+    </div>
+    <div class="d-flex align-items-center">
+      <div class="legend-circle external-node mr-2"></div>
+      <span i18n="address.cluster.external-node">External Payments</span>
+    </div>
+  </div>
 </div> 
