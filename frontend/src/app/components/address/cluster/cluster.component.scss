@@ -15,3 +15,26 @@
   color: var(--text-muted);
   font-size: 0.9em;
 } 
+
+.cluster-visualization {
+  margin-top: 20px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.svg-container {
+  width: 100%;
+  position: relative;
+}
+
+.cluster-node {
+  fill: #64b5f6;
+  stroke: #1976d2;
+  stroke-width: 2px;
+}
+
+.cluster-link {
+  stroke: #333;
+  stroke-width: 2px;
+}

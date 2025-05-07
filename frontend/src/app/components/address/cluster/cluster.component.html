@@ -27,4 +27,18 @@
       </div>
     </div>
   </div>
+  
+  <!-- Cluster visualization with zoom functionality -->
+  <div class="cluster-visualization">
+    <div class="svg-container" #svgContainer>
+      <svg #clusterSvg [attr.viewBox]="viewBox" width="100%" height="250">
+        <g [attr.transform]="transform">
+          <circle cx="75" cy="100" r="30" class="cluster-node"></circle>
+          <path d="M 75 100 C 125 50, 175 150, 225 100" stroke="black" fill="none" stroke-width="3" class="cluster-link"></path>
+          <circle cx="225" cy="100" r="30" class="cluster-node"></circle>
+        </g>
+      </svg>
+    </div>
+  </div>
+  
 </div> 
