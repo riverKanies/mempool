@@ -101,7 +101,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       const y = 80;
       
       // Create node for the address we're focusing on
-      this.createNode(g, x, y, tx.txid);
+      this.createNode(g, x, y, tx.txid, 'address', this.addressString);
       
       // If not the first transaction, create connection from previous
       if (index > 0) {
@@ -111,7 +111,9 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       // For all except coinbase, create external payment node
       if (index > 0 || !this.isCoinbase(tx)) {
         const externalY = y + this.verticalSpacing;
-        this.createNode(g, x, externalY, tx.txid, 'external');
+        // Find an external address (one that's not the current address)
+        const externalAddress = this.findExternalAddress(tx);
+        this.createNode(g, x, externalY, tx.txid, 'external', externalAddress);
         
         // Create S-shaped connection to external payment
         this.createSCurve(g, x - this.horizontalSpacing, y, x, externalY);
@@ -119,7 +121,51 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     });
   }
   
-  private createNode(parent: SVGElement, x: number, y: number, txid: string, type: 'address' | 'external' = 'address') {
+  private findExternalAddress(tx: Transaction): string {
+    // For outputs: find addresses that received from our address
+    for (const output of tx.vout) {
+      // First try to use the scriptpubkey_address if available
+      if (output.scriptpubkey_address && 
+          output.scriptpubkey_address !== this.addressString) {
+        return output.scriptpubkey_address;
+      }
+      // If no scriptpubkey_address, use the scriptpubkey as a fallback for P2PK
+      else if (output.scriptpubkey && 
+               !output.scriptpubkey_address && 
+               output.scriptpubkey_type === 'p2pk') {
+        return `...${output.scriptpubkey.substring(output.scriptpubkey.length - 5)}`;
+      }
+    }
+    
+    // For inputs: find addresses that sent to our address
+    for (const input of tx.vin) {
+      // Try to use the prevout's scriptpubkey_address if available
+      if (input.prevout?.scriptpubkey_address && 
+          input.prevout.scriptpubkey_address !== this.addressString) {
+        return input.prevout.scriptpubkey_address;
+      }
+      // If no scriptpubkey_address in prevout, use scriptpubkey as fallback
+      else if (input.prevout?.scriptpubkey && 
+               !input.prevout.scriptpubkey_address && 
+               input.prevout.scriptpubkey_type === 'p2pk') {
+        return `...${input.prevout.scriptpubkey.substring(input.prevout.scriptpubkey.length - 5)}`;
+      }
+    }
+    
+    // If still no external address or scriptpubkey found, check for other script types
+    for (const output of tx.vout) {
+      if (output.scriptpubkey && output.scriptpubkey !== '' && 
+          (!output.scriptpubkey_address || output.scriptpubkey_address !== this.addressString)) {
+        const scriptType = output.scriptpubkey_type || 'unknown';
+        return `${scriptType}: ...${output.scriptpubkey.substring(output.scriptpubkey.length - 5)}`;
+      }
+    }
+    
+    // Last resort fallback
+    return 'Unknown Address';
+  }
+  
+  private createNode(parent: SVGElement, x: number, y: number, txid: string, type: 'address' | 'external' = 'address', address: string = 'Unknown') {
     const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     circle.setAttribute('cx', x.toString());
     circle.setAttribute('cy', y.toString());
@@ -163,16 +209,22 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     
     parent.appendChild(circle);
     
-    // Add tooltip with truncated txid
+    // Add tooltip with truncated address
     const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     text.setAttribute('x', x.toString());
     text.setAttribute('y', (y + this.nodeRadius + 15).toString());
     text.setAttribute('text-anchor', 'middle');
     text.setAttribute('class', 'node-label');
-    text.setAttribute('fill', '#333');
+    text.setAttribute('fill', '#fff');
     text.setAttribute('font-size', '12px');
     text.setAttribute('user-select', 'none');
-    text.textContent = txid.substring(0, 6) + '...';
+    
+    // Display truncated address instead of txid
+    const displayText = address ? 
+      (address.length > 10 ? `...${address.substring(address.length - 5)}` : address) : 
+      'Unknown';
+    text.textContent = displayText;
+    
     parent.appendChild(text);
   }
   
@@ -248,13 +300,6 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       });
       
       element.addEventListener('mousemove', (event: MouseEvent) => {
-        const rect = element.getBoundingClientRect();
-        const mouseX = event.clientX - rect.left;
-        const mouseY = event.clientY - rect.top;
-
-        const mousePointX = (mouseX - this.translateX) / this.scale;
-        const mousePointY = (mouseY - this.translateY) / this.scale;
-        console.log('mousemove', mousePointX, mousePointY);
         if (this.isDragging) {
           this.translateX = event.clientX - this.startX;
           this.translateY = event.clientY - this.startY;
