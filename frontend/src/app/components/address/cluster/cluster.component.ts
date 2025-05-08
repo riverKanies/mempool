@@ -67,6 +67,9 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     return `0 0 ${this.svgWidth || 800} ${this.svgHeight || 300}`;
   }
 
+  // Add a new property to track change output indexes
+  private clusterIndexes: number[] = [];
+
   constructor(
     private electrsApiService: ElectrsApiService
   ) {}
@@ -78,6 +81,9 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       
       // Initialize the displayed transactions with just the first/oldest transaction
       this.displayedTransactions = [this.firstTransaction];
+      
+      // Initialize the first cluster index by finding the most likely change output
+      this.clusterIndexes = [this.findChangeOutputIndex(this.firstTransaction)];
       
       // After data is loaded, render the visualization
       setTimeout(() => this.renderTransactionFlow(), 0);
@@ -114,8 +120,10 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       const x = 50 + index * this.horizontalSpacing;
       const y = 80;
       
-      // Create node for the address we're focusing on
-      this.createNode(g, x, y, tx.txid, 'address', this.addressString);
+      // Create node for the address we're focusing on (using the cluster index)
+      const clusterIndex = this.clusterIndexes[index];
+      const clusterAddress = this.getAddressFromOutput(tx, clusterIndex);
+      this.createNode(g, x, y, tx.txid, 'address', clusterAddress);
       
       // create connection from previous
       this.createHorizontalArrow(g, x - this.horizontalSpacing, y, x, y);
@@ -124,7 +132,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       if (index > 0 || !this.isCoinbase(tx)) {
         const externalY = y + this.verticalSpacing;
         // Find an external address (one that's not the current address)
-        const externalAddress = this.findExternalAddress(tx);
+        const externalAddress = this.findExternalAddress(tx, clusterIndex);
         this.createNode(g, x, externalY, tx.txid, 'external', externalAddress);
         
         // Create S-shaped connection to external payment
@@ -133,43 +141,57 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     });
   }
   
-  private findExternalAddress(tx: Transaction): string {
-    // For outputs: find addresses that received from our address
-    for (const output of tx.vout) {
-      // First try to use the scriptpubkey_address if available
-      if (output.scriptpubkey_address && 
-          output.scriptpubkey_address !== this.addressString) {
+  // Helper method to get address from a specific output
+  private getAddressFromOutput(tx: Transaction, outputIndex: number): string {
+    if (outputIndex >= 0 && outputIndex < tx.vout.length) {
+      const output = tx.vout[outputIndex];
+      if (output.scriptpubkey_address) {
         return output.scriptpubkey_address;
+      } else if (output.scriptpubkey && output.scriptpubkey_type === 'p2pk') {
+        return output.scriptpubkey;
       }
-      // If no scriptpubkey_address, use the scriptpubkey as a fallback for P2PK
-      else if (output.scriptpubkey && 
-               !output.scriptpubkey_address && 
-               output.scriptpubkey_type === 'p2pk') {
-        return `...${output.scriptpubkey.substring(output.scriptpubkey.length - 5)}`;
+    }
+    return this.addressString; // Fallback to the main address
+  }
+  
+  // New method to find the most likely change output index
+  private findChangeOutputIndex(tx: Transaction): number {
+    // First check if any output spends back to the input address
+    for (let i = 0; i < tx.vout.length; i++) {
+      const output = tx.vout[i];
+      if (output.scriptpubkey_address === this.addressString || 
+          output.scriptpubkey === getScriptPubKey(this.addressString)) {
+        return i;
       }
     }
     
-    // For inputs: find addresses that sent to our address
+    // If no direct match, assume the last output is change (common Bitcoin convention)
+    return tx.vout.length - 1;
+  }
+  
+  // Updated method to find external address based on the change output index
+  private findExternalAddress(tx: Transaction, changeIndex: number): string {
+    // Look for an output that is not the change output
+    for (let i = 0; i < tx.vout.length; i++) {
+      if (i !== changeIndex) {
+        const output = tx.vout[i];
+        if (output.scriptpubkey_address) {
+          return output.scriptpubkey_address;
+        } else if (output.scriptpubkey && output.scriptpubkey_type === 'p2pk') {
+          return `...${output.scriptpubkey.substring(output.scriptpubkey.length - 5)}`;
+        }
+      }
+    }
+    
+    // If no suitable external output found, check inputs
     for (const input of tx.vin) {
-      // Try to use the prevout's scriptpubkey_address if available
       if (input.prevout?.scriptpubkey_address && 
           input.prevout.scriptpubkey_address !== this.addressString) {
         return input.prevout.scriptpubkey_address;
-      }
-      // If no scriptpubkey_address in prevout, use scriptpubkey as fallback
-      else if (input.prevout?.scriptpubkey && 
-               !input.prevout.scriptpubkey_address && 
-               input.prevout.scriptpubkey_type === 'p2pk') {
+      } else if (input.prevout?.scriptpubkey && 
+                !input.prevout.scriptpubkey_address && 
+                input.prevout.scriptpubkey_type === 'p2pk') {
         return `...${input.prevout.scriptpubkey.substring(input.prevout.scriptpubkey.length - 5)}`;
-      }
-    }
-    
-    // If still no external address or scriptpubkey found, check for other script types
-    for (const output of tx.vout) {
-      if (output.scriptpubkey && output.scriptpubkey !== '' && 
-          (!output.scriptpubkey_address || output.scriptpubkey_address !== this.addressString)) {
-        const scriptType = output.scriptpubkey_type || 'unknown';
-        return `${scriptType}: ...${output.scriptpubkey.substring(output.scriptpubkey.length - 5)}`;
       }
     }
     
@@ -332,17 +354,24 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     }
   }
 
-  // Add a method to add transactions to the displayed list
+  // Update the addTransaction method to also determine the change output index
   public addTransaction(transaction: Transaction): void {
     if (!this.displayedTransactions.some(tx => tx.txid === transaction.txid)) {
       this.displayedTransactions.push(transaction);
+      this.clusterIndexes.push(this.findChangeOutputIndex(transaction));
       this.renderTransactionFlow();
     }
   }
   
-  // Add method to fetch the next transaction
+  // Update fetchNextTransaction to better handle input matching
   private fetchNextTransaction(txid: string, address: string): void {
-    const currentTx = this.displayedTransactions.find(t => t.txid === txid);
+    const txIndex = this.displayedTransactions.findIndex(t => t.txid === txid);
+    if (txIndex === -1) {
+      console.log('Transaction not found');
+      return;
+    }
+    
+    const currentTx = this.displayedTransactions[txIndex];
     
     // Ensure we have the transaction and its outspends
     if (!currentTx || !currentTx._outspends) {
@@ -350,12 +379,23 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       return;
     }
 
-    const outspendIndex = currentTx.vout.findIndex(vout => vout.scriptpubkey_address === address || vout.scriptpubkey === getScriptPubKey(address))
+    // Determine which output to follow based on whether we clicked a cluster node or external node
+    const clusterAddress = this.getAddressFromOutput(currentTx, this.clusterIndexes[txIndex]);
+    const outputIndex = address === clusterAddress
+      ? this.clusterIndexes[txIndex] // If cluster node, follow the change output
+      : currentTx.vout.findIndex(vout => 
+          vout.scriptpubkey_address === address || 
+          vout.scriptpubkey === getScriptPubKey(address));
+    
+    if (outputIndex === -1) {
+      console.log('Output not found for address:', address);
+      return;
+    }
+    
     // Get the outspend for this specific output
-    console.log('currentTx._outspends', currentTx._outspends);
-    const outspend = currentTx._outspends[outspendIndex];//might be wrong
-    if (!outspend.spent) {
-      console.log('outspend not spent');
+    const outspend = currentTx._outspends[outputIndex];
+    if (!outspend || !outspend.spent) {
+      console.log('Output not spent');
       return;
     }
 
@@ -363,11 +403,13 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     this.electrsApiService.getTransaction$(outspend.txid).subscribe(nextTx => {
       // Verify that the input of this transaction matches our expected vin
       const matchingInput = nextTx.vin.find(input => {
-        console.log('input', input.prevout)
-        return input.txid === currentTx.txid && (input.prevout.scriptpubkey_address === address || input.prevout.scriptpubkey === getScriptPubKey(address))
+        console.log('Checking input:', input);
+        console.log('Looking for txid:', currentTx.txid, 'vout:', outputIndex);
+        return input.txid === currentTx.txid && input.vout === outputIndex;
       });
       
       if (matchingInput) {
+        console.log('Found matching input:', matchingInput);
         // Fetch outspends for this new transaction before adding it
         this.electrsApiService.getOutspends$(nextTx.txid).subscribe(outspends => {
           // Store outspends with the transaction
@@ -378,6 +420,9 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
         });
       } else {
         console.log('Next transaction does not reference the expected input');
+        console.log('Current tx:', currentTx.txid);
+        console.log('Output index:', outputIndex);
+        console.log('Next tx inputs:', nextTx.vin);
       }
     });
   }
