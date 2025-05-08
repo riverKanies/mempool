@@ -1,5 +1,7 @@
 import { Component, Input, OnChanges, SimpleChanges, ViewChild, ElementRef, AfterViewInit, HostListener } from '@angular/core';
 import { Transaction } from '@interfaces/electrs.interface';
+import { ElectrsApiService } from '@app/services/electrs-api.service';
+import { forkJoin } from 'rxjs';
 // known satoshi address: http://localhost:4200/address/0411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3
 // multiple inputs: http://localhost:4200/address/04ea1feff861b51fe3f5f8a3b12d0f4712db80e919548a80839fc47c6a21e66d957e9c5d8cd108c7a2d2324bad71f9904ac0ae7336507d785b17a2c115e427a32f
 
@@ -16,6 +18,9 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   
   firstTransaction: Transaction | null = null;
   isLoading = true;
+  
+  // Component's internal transaction state
+  private displayedTransactions: Transaction[] = [];
   
   // SVG zoom and pan properties
   private scale = 1;
@@ -62,10 +67,17 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     return `0 0 ${this.svgWidth || 800} ${this.svgHeight || 300}`;
   }
 
+  constructor(
+    private electrsApiService: ElectrsApiService
+  ) {}
+
   ngOnChanges(changes: SimpleChanges): void {
     if (changes.transactions && this.transactions?.length) {
       this.isLoading = false;
       this.firstTransaction = this.transactions[this.transactions.length - 1]; // Get the oldest transaction
+      
+      // Initialize the displayed transactions with just the first/oldest transaction
+      this.displayedTransactions = [this.firstTransaction];
       
       // After data is loaded, render the visualization
       setTimeout(() => this.renderTransactionFlow(), 0);
@@ -80,7 +92,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   }
   
   private renderTransactionFlow() {
-    if (!this.clusterSvg || !this.transactions.length) return;
+    if (!this.clusterSvg || !this.displayedTransactions.length) return;
     
     const svg = this.clusterSvg.nativeElement;
     const g = svg.querySelector('g');
@@ -90,8 +102,8 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       g.removeChild(g.firstChild);
     }
     
-    // Reverse transactions to start with the oldest
-    const orderedTransactions = [...this.transactions].reverse();
+    // Use the component's internal transaction list instead of the input transactions
+    const orderedTransactions = [...this.displayedTransactions];
     
     // Calculate SVG dimensions based on transaction count
     this.svgWidth = Math.max(800, orderedTransactions.length * this.horizontalSpacing + 100);
@@ -202,9 +214,9 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     
     circle.setAttribute('data-txid', txid);
     
-    // Add click event to navigate to transaction
+    // Update click event to fetch next transaction instead of navigating
     circle.addEventListener('click', () => {
-      window.location.href = `/tx/${txid}`;
+      this.fetchNextTransaction(txid);
     });
     
     parent.appendChild(circle);
@@ -317,6 +329,44 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       
       // Set initial cursor
       element.style.cursor = 'grab';
+    }
+  }
+
+  // Add a method to add transactions to the displayed list
+  public addTransaction(transaction: Transaction): void {
+    if (!this.displayedTransactions.some(tx => tx.txid === transaction.txid)) {
+      this.displayedTransactions.push(transaction);
+      this.renderTransactionFlow();
+    }
+  }
+  
+  // Add method to fetch the next transaction
+  private fetchNextTransaction(txid: string): void {
+    const currentTx = this.displayedTransactions.find(t => t.txid === txid);
+    
+    // Ensure we have the transaction and its outspends
+    if (!currentTx || !currentTx._outspends) {
+      console.log('Transaction or outspends not found');
+      return;
+    }
+    
+    // Find the first spent output
+    const spentOutput = currentTx._outspends.find(outspend => outspend.spent);
+    
+    if (spentOutput && spentOutput.txid) {
+      // Fetch the transaction that spent this output
+      this.electrsApiService.getTransaction$(spentOutput.txid).subscribe(nextTx => {
+        // Fetch outspends for this new transaction before adding it
+        this.electrsApiService.getOutspends$(nextTx.txid).subscribe(outspends => {
+          // Store outspends with the transaction
+          nextTx._outspends = outspends;
+          
+          // Now add the transaction with its outspends to our display list
+          this.addTransaction(nextTx);
+        });
+      });
+    } else {
+      console.log('No spent outputs found for this transaction');
     }
   }
 } 
