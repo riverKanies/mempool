@@ -216,7 +216,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     
     // Update click event to fetch next transaction instead of navigating
     circle.addEventListener('click', () => {
-      this.fetchNextTransaction(txid);
+      this.fetchNextTransaction(txid, address);
     });
     
     parent.appendChild(circle);
@@ -341,7 +341,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   }
   
   // Add method to fetch the next transaction
-  private fetchNextTransaction(txid: string): void {
+  private fetchNextTransaction(txid: string, address: string): void {
     const currentTx = this.displayedTransactions.find(t => t.txid === txid);
     
     // Ensure we have the transaction and its outspends
@@ -349,13 +349,25 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       console.log('Transaction or outspends not found');
       return;
     }
-    
-    // Find the first spent output
-    const spentOutput = currentTx._outspends.find(outspend => outspend.spent);
-    
-    if (spentOutput && spentOutput.txid) {
-      // Fetch the transaction that spent this output
-      this.electrsApiService.getTransaction$(spentOutput.txid).subscribe(nextTx => {
+
+    const outspendIndex = currentTx.vout.findIndex(vout => vout.scriptpubkey_address === address || vout.scriptpubkey === getScriptPubKey(address))
+    // Get the outspend for this specific output
+    console.log('currentTx._outspends', currentTx._outspends);
+    const outspend = currentTx._outspends[outspendIndex];//might be wrong
+    if (!outspend.spent) {
+      console.log('outspend not spent');
+      return;
+    }
+
+    // Fetch the transaction that spent this specific output
+    this.electrsApiService.getTransaction$(outspend.txid).subscribe(nextTx => {
+      // Verify that the input of this transaction matches our expected vin
+      const matchingInput = nextTx.vin.find(input => {
+        console.log('input', input.prevout)
+        return input.txid === currentTx.txid && (input.prevout.scriptpubkey_address === address || input.prevout.scriptpubkey === getScriptPubKey(address))
+      });
+      
+      if (matchingInput) {
         // Fetch outspends for this new transaction before adding it
         this.electrsApiService.getOutspends$(nextTx.txid).subscribe(outspends => {
           // Store outspends with the transaction
@@ -364,9 +376,12 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
           // Now add the transaction with its outspends to our display list
           this.addTransaction(nextTx);
         });
-      });
-    } else {
-      console.log('No spent outputs found for this transaction');
-    }
+      } else {
+        console.log('Next transaction does not reference the expected input');
+      }
+    });
   }
-} 
+}
+function getScriptPubKey(address: string): string {
+  return address.length === 66 ? '21' : '41' + address + 'ac'
+}
