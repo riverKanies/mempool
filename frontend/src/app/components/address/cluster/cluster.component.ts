@@ -46,7 +46,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   };
 
   private readonly linkStyles = {
-    stroke: '#555',
+    stroke: '#fff',
     strokeWidth: '2'
   };
   
