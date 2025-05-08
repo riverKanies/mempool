@@ -1,5 +1,7 @@
 import { Component, Input, OnChanges, SimpleChanges, ViewChild, ElementRef, AfterViewInit, HostListener } from '@angular/core';
 import { Transaction } from '@interfaces/electrs.interface';
+// known satoshi address: http://localhost:4200/address/0411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3
+// multiple inputs: http://localhost:4200/address/04ea1feff861b51fe3f5f8a3b12d0f4712db80e919548a80839fc47c6a21e66d957e9c5d8cd108c7a2d2324bad71f9904ac0ae7336507d785b17a2c115e427a32f
 
 @Component({
   selector: 'app-address-cluster',
@@ -103,10 +105,8 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       // Create node for the address we're focusing on
       this.createNode(g, x, y, tx.txid, 'address', this.addressString);
       
-      // If not the first transaction, create connection from previous
-      if (index > 0) {
-        this.createHorizontalArrow(g, x - this.horizontalSpacing, y, x, y);
-      }
+      // create connection from previous
+      this.createHorizontalArrow(g, x - this.horizontalSpacing, y, x, y);
       
       // For all except coinbase, create external payment node
       if (index > 0 || !this.isCoinbase(tx)) {
