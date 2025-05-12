@@ -1,10 +1,11 @@
-import { Component, Input, OnChanges, SimpleChanges, ViewChild, ElementRef, AfterViewInit, HostListener } from '@angular/core';
+import { Component, Input, OnChanges, SimpleChanges, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
 import { Transaction } from '@interfaces/electrs.interface';
 import { ElectrsApiService } from '@app/services/electrs-api.service';
-import { forkJoin } from 'rxjs';
+
 // known satoshi address: http://localhost:4200/address/0411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3
 // multiple inputs: http://localhost:4200/address/04ea1feff861b51fe3f5f8a3b12d0f4712db80e919548a80839fc47c6a21e66d957e9c5d8cd108c7a2d2324bad71f9904ac0ae7336507d785b17a2c115e427a32f
 // multiple outputs: http://localhost:4200/address/1CGqByN5brkvpRrM58d7JXC4VnXb1H1j5d
+// 2 inputs: http://localhost:4200/address/12ZYdSCw3dbWcXDqBeVpH2CWAWMVx1fmYt
 
 @Component({
   selector: 'app-address-cluster',
@@ -119,26 +120,37 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     // Create nodes and connections
     orderedTransactions.forEach((tx, index) => {
       const x = 50 + index * this.horizontalSpacing;
-      const y = 80;
+      const y = 120;
       
       // Create node for the address we're focusing on (using the cluster index)
       const clusterIndex = this.clusterIndexes[index];
       const clusterAddress = this.getAddressFromOutput(tx, clusterIndex);
-      this.createNode(g, x, y, tx.txid, 'address', clusterAddress);
+      this.createNode(g, x, y, tx.txid, 'cluster', clusterAddress);
       
       // create connection from previous
       this.createHorizontalArrow(g, x - this.horizontalSpacing, y, x, y);
       
-      // For all except coinbase, create external payment node
-      if (index > 0 || !this.isCoinbase(tx)) {
-        const externalY = y + this.verticalSpacing;
+
+
+      const externalOutputsLabel = this.getExternalOutputsLabel(tx, clusterIndex);
+      if (externalOutputsLabel) {
+        const externalY = y - this.verticalSpacing;
         // Find an external address (one that's not the current address)
         
-        const externalOutputsLabel = this.getExternalOutputsLabel(tx, clusterIndex);
         this.createNode(g, x, externalY, tx.txid, 'external', externalOutputsLabel);
         
         // Create S-shaped connection to external payment
-        this.createSCurve(g, x - this.horizontalSpacing, y, x, externalY);
+        this.createSCurve(g, x - this.horizontalSpacing*3/4, y, x, externalY);
+      }
+
+      const additionalInputsLabel = this.getAdditionalInputsLabel(index);
+      if (additionalInputsLabel) {
+        const additionalY = y + this.verticalSpacing;
+        
+        this.createNode(g, x - this.horizontalSpacing, additionalY, tx.txid, 'cluster', additionalInputsLabel);
+        
+        // Create S-shaped connection to external payment
+        this.createSCurve(g, x - this.horizontalSpacing, additionalY, x - (this.horizontalSpacing/4), y, false);
       }
     });
   }
@@ -171,10 +183,38 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     return tx.vout.length - 1;
   }
 
+  private getAdditionalInputsLabel(txIndex: number): string {
+    const tx = this.displayedTransactions[txIndex];
+    if (tx.vin.length == 2) return this.findAdditionalInputAddress(txIndex);
+
+    if (tx.vin.length > 2) return `Cluster ${tx.vin.length - 1}`;
+
+    return null;
+  }
+
+  private findAdditionalInputAddress(txIndex: number): string {
+    const prevTx = this.displayedTransactions[txIndex - 1];
+    const prevClusterIndex = this.clusterIndexes[txIndex - 1];
+    const clusterAddress = this.getAddressFromOutput(prevTx, prevClusterIndex);
+    const currentTx = this.displayedTransactions[txIndex];
+    // Look for an input address that is not the change address from previous tx
+    for (let i = 0; i < currentTx.vin.length; i++) {
+      if (i !== prevClusterIndex) {
+        const output = currentTx.vin[i].prevout;
+        if (output.scriptpubkey_address) {
+          return output.scriptpubkey_address;
+        } else if (output.scriptpubkey && output.scriptpubkey_type === 'p2pk') {
+          return `...${output.scriptpubkey.substring(output.scriptpubkey.length - 5)}`;
+        }
+      }
+    }
+    return 'Unknown Address';
+  }
+
   private getExternalOutputsLabel(tx: Transaction, clusterIndex: number): string {
     if (tx.vout.length == 2) return this.findExternalAddress(tx, clusterIndex);
 
-    if (tx.vout.length > 2) return `Batch ${tx.vout.length}`;
+    if (tx.vout.length > 2) return `Batch ${tx.vout.length - 1}`;
 
     return null;
   }
@@ -192,31 +232,17 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
         }
       }
     }
-    
-    // If no suitable external output found, check inputs
-    for (const input of tx.vin) {
-      if (input.prevout?.scriptpubkey_address && 
-          input.prevout.scriptpubkey_address !== this.addressString) {
-        return input.prevout.scriptpubkey_address;
-      } else if (input.prevout?.scriptpubkey && 
-                !input.prevout.scriptpubkey_address && 
-                input.prevout.scriptpubkey_type === 'p2pk') {
-        return `...${input.prevout.scriptpubkey.substring(input.prevout.scriptpubkey.length - 5)}`;
-      }
-    }
-    
-    // Last resort fallback
     return 'Unknown Address';
   }
   
-  private createNode(parent: SVGElement, x: number, y: number, txid: string, type: 'address' | 'external' = 'address', address: string = 'Unknown') {
+  private createNode(parent: SVGElement, x: number, y: number, txid: string, type: 'cluster' | 'external' = 'cluster', address: string = 'Unknown') {
     const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     circle.setAttribute('cx', x.toString());
     circle.setAttribute('cy', y.toString());
     circle.setAttribute('r', this.nodeRadius.toString());
     
     // Apply styles directly to the element
-    if (type === 'address') {
+    if (type === 'cluster') {
       circle.setAttribute('class', 'cluster-node');
       circle.setAttribute('fill', this.clusterNodeStyles.fill);
       circle.setAttribute('stroke', this.clusterNodeStyles.stroke);
@@ -285,7 +311,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     parent.appendChild(arrow);
   }
   
-  private createSCurve(parent: SVGElement, x1: number, y1: number, x2: number, y2: number) {
+  private createSCurve(parent: SVGElement, x1: number, y1: number, x2: number, y2: number, renderArrow: boolean = true) {
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     const controlX1 = x1 + this.horizontalSpacing * 0.5;
     const controlY1 = y1;
@@ -296,7 +322,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     path.setAttribute('stroke', this.linkStyles.stroke);
     path.setAttribute('fill', 'none');
     path.setAttribute('stroke-width', this.linkStyles.strokeWidth);
-    path.setAttribute('marker-end', 'url(#arrowhead)');
+    if (renderArrow) path.setAttribute('marker-end', 'url(#arrowhead)');
     path.setAttribute('class', 'cluster-link');
     parent.appendChild(path);
   }
