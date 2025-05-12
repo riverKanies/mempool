@@ -4,6 +4,7 @@ import { ElectrsApiService } from '@app/services/electrs-api.service';
 import { forkJoin } from 'rxjs';
 // known satoshi address: http://localhost:4200/address/0411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3
 // multiple inputs: http://localhost:4200/address/04ea1feff861b51fe3f5f8a3b12d0f4712db80e919548a80839fc47c6a21e66d957e9c5d8cd108c7a2d2324bad71f9904ac0ae7336507d785b17a2c115e427a32f
+// multiple outputs: http://localhost:4200/address/1CGqByN5brkvpRrM58d7JXC4VnXb1H1j5d
 
 @Component({
   selector: 'app-address-cluster',
@@ -132,8 +133,9 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       if (index > 0 || !this.isCoinbase(tx)) {
         const externalY = y + this.verticalSpacing;
         // Find an external address (one that's not the current address)
-        const externalAddress = this.findExternalAddress(tx, clusterIndex);
-        this.createNode(g, x, externalY, tx.txid, 'external', externalAddress);
+        
+        const externalOutputsLabel = this.getExternalOutputsLabel(tx, clusterIndex);
+        this.createNode(g, x, externalY, tx.txid, 'external', externalOutputsLabel);
         
         // Create S-shaped connection to external payment
         this.createSCurve(g, x - this.horizontalSpacing, y, x, externalY);
@@ -167,6 +169,14 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     
     // If no direct match, assume the last output is change (common Bitcoin convention)
     return tx.vout.length - 1;
+  }
+
+  private getExternalOutputsLabel(tx: Transaction, clusterIndex: number): string {
+    if (tx.vout.length == 2) return this.findExternalAddress(tx, clusterIndex);
+
+    if (tx.vout.length > 2) return `Batch ${tx.vout.length}`;
+
+    return null;
   }
   
   // Updated method to find external address based on the change output index
