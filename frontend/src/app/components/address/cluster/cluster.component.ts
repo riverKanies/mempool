@@ -124,13 +124,17 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       
       // Create node for the address we're focusing on (using the cluster index)
       const clusterIndex = this.clusterIndexes[index];
-      const clusterAddress = this.getAddressFromOutput(tx, clusterIndex);
+      const clusterAddress = this.getAddressFromOutput(tx.vout[clusterIndex]);
       this.createNode(g, x, y, tx.txid, 'cluster', clusterAddress);
       
       // create connection from previous
       this.createHorizontalArrow(g, x - this.horizontalSpacing, y, x, y);
       
-
+      // if (index === 0) {
+      //   // for first tx, need to render input node(s)
+      //   // first determine if the output to the original address is change
+      //   const isChange = tx.vout.findIndex(vout => vout.scriptpubkey_address === this.addressString) === clusterIndex;
+      // }
 
       const externalOutputsLabel = this.getExternalOutputsLabel(tx, clusterIndex);
       if (externalOutputsLabel) {
@@ -155,22 +159,14 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     });
   }
   
-  // Helper method to get address from a specific output
-  private getAddressFromOutput(tx: Transaction, outputIndex: number): string {
-    if (outputIndex >= 0 && outputIndex < tx.vout.length) {
-      const output = tx.vout[outputIndex];
-      if (output.scriptpubkey_address) {
-        return output.scriptpubkey_address;
-      } else if (output.scriptpubkey && output.scriptpubkey_type === 'p2pk') {
-        return output.scriptpubkey;
-      }
-    }
-    return this.addressString; // Fallback to the main address
+  private getAddressFromOutput(output): string {
+    return output.scriptpubkey_address || output.scriptpubkey;
   }
   
   // New method to find the most likely change output index
   private findChangeOutputIndex(tx: Transaction): number {
     // First check if any output spends back to the input address
+    // as is this only applies to the origninal address, should check for spend to any address in cluster.
     for (let i = 0; i < tx.vout.length; i++) {
       const output = tx.vout[i];
       if (output.scriptpubkey_address === this.addressString || 
@@ -195,17 +191,14 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   private findAdditionalInputAddress(txIndex: number): string {
     const prevTx = this.displayedTransactions[txIndex - 1];
     const prevClusterIndex = this.clusterIndexes[txIndex - 1];
-    const clusterAddress = this.getAddressFromOutput(prevTx, prevClusterIndex);
+    const clusterAddress = this.getAddressFromOutput(prevTx.vout[prevClusterIndex]);
     const currentTx = this.displayedTransactions[txIndex];
     // Look for an input address that is not the change address from previous tx
     for (let i = 0; i < currentTx.vin.length; i++) {
-      if (i !== prevClusterIndex) {
-        const output = currentTx.vin[i].prevout;
-        if (output.scriptpubkey_address) {
-          return output.scriptpubkey_address;
-        } else if (output.scriptpubkey && output.scriptpubkey_type === 'p2pk') {
-          return `...${output.scriptpubkey.substring(output.scriptpubkey.length - 5)}`;
-        }
+      const output = currentTx.vin[i].prevout;
+      const inputAddress = this.getAddressFromOutput(output);
+      if (inputAddress !== clusterAddress) {
+        return inputAddress;
       }
     }
     return 'Unknown Address';
@@ -225,11 +218,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     for (let i = 0; i < tx.vout.length; i++) {
       if (i !== changeIndex) {
         const output = tx.vout[i];
-        if (output.scriptpubkey_address) {
-          return output.scriptpubkey_address;
-        } else if (output.scriptpubkey && output.scriptpubkey_type === 'p2pk') {
-          return `...${output.scriptpubkey.substring(output.scriptpubkey.length - 5)}`;
-        }
+        return output.scriptpubkey_address || output.scriptpubkey;
       }
     }
     return 'Unknown Address';
@@ -274,6 +263,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     
     // Update click event to fetch next transaction instead of navigating
     circle.addEventListener('click', () => {
+      if (type !== 'cluster') return;
       this.fetchNextTransaction(txid, address);
     });
     
@@ -401,39 +391,14 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   
   // Update fetchNextTransaction to better handle input matching
   private fetchNextTransaction(txid: string, address: string): void {
+    console.log('fetchNextTransaction', address);
     const txIndex = this.displayedTransactions.findIndex(t => t.txid === txid);
-    if (txIndex === -1) {
-      console.log('Transaction not found');
-      return;
-    }
     
     const currentTx = this.displayedTransactions[txIndex];
-    
-    // Ensure we have the transaction and its outspends
-    if (!currentTx || !currentTx._outspends) {
-      console.log('Transaction or outspends not found');
-      return;
-    }
 
-    // Determine which output to follow based on whether we clicked a cluster node or external node
-    const clusterAddress = this.getAddressFromOutput(currentTx, this.clusterIndexes[txIndex]);
-    const outputIndex = address === clusterAddress
-      ? this.clusterIndexes[txIndex] // If cluster node, follow the change output
-      : currentTx.vout.findIndex(vout => 
-          vout.scriptpubkey_address === address || 
-          vout.scriptpubkey === getScriptPubKey(address));
+    const outputIndex = this.clusterIndexes[txIndex]
     
-    if (outputIndex === -1) {
-      console.log('Output not found for address:', address);
-      return;
-    }
-    
-    // Get the outspend for this specific output
     const outspend = currentTx._outspends[outputIndex];
-    if (!outspend || !outspend.spent) {
-      console.log('Output not spent');
-      return;
-    }
 
     // Fetch the transaction that spent this specific output
     this.electrsApiService.getTransaction$(outspend.txid).subscribe(nextTx => {
