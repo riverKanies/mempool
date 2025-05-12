@@ -119,7 +119,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     
     // Create nodes and connections
     orderedTransactions.forEach((tx, index) => {
-      const x = 50 + index * this.horizontalSpacing;
+      const x = 120 + index * this.horizontalSpacing;
       const y = 120;
       
       // Create node for the address we're focusing on (using the cluster index)
@@ -130,11 +130,18 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       // create connection from previous
       this.createHorizontalArrow(g, x - this.horizontalSpacing, y, x, y);
       
-      // if (index === 0) {
-      //   // for first tx, need to render input node(s)
-      //   // first determine if the output to the original address is change
-      //   const isChange = tx.vout.findIndex(vout => vout.scriptpubkey_address === this.addressString) === clusterIndex;
-      // }
+      if (index === 0) {
+        if (this.isCoinbase(tx)) return;
+        // for first tx, need to render input node(s)
+        // first determine if the output to the original address is change
+        // if its last vout in tx, then its change
+        const isChange = clusterIndex === tx.vout.length - 1;
+        const type = isChange ? 'cluster' : 'external';
+        // create input node
+        const inputAddress = 'prev in';
+        this.createNode(g, x - this.horizontalSpacing, y, tx.txid, type, inputAddress);
+        
+      }
 
       const externalOutputsLabel = this.getExternalOutputsLabel(tx, clusterIndex);
       if (externalOutputsLabel) {
@@ -190,6 +197,10 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
 
   private findAdditionalInputAddress(txIndex: number): string {
     const prevTx = this.displayedTransactions[txIndex - 1];
+    if (!prevTx) {
+      console.error('No previous transaction found');
+      return null;
+    }
     const prevClusterIndex = this.clusterIndexes[txIndex - 1];
     const clusterAddress = this.getAddressFromOutput(prevTx.vout[prevClusterIndex]);
     const currentTx = this.displayedTransactions[txIndex];
