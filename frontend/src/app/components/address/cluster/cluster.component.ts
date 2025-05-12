@@ -7,6 +7,8 @@ import { ElectrsApiService } from '@app/services/electrs-api.service';
 // multiple outputs: http://localhost:4200/address/1CGqByN5brkvpRrM58d7JXC4VnXb1H1j5d
 // 2 inputs: http://localhost:4200/address/12ZYdSCw3dbWcXDqBeVpH2CWAWMVx1fmYt
 
+// prev in external: http://localhost:4200/address/1AqtQTfkngLf7P7TPdXZkWAhs5cqN7t7Fw
+
 @Component({
   selector: 'app-address-cluster',
   templateUrl: './cluster.component.html',
@@ -130,6 +132,8 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       // create connection from previous
       this.createHorizontalArrow(g, x - this.horizontalSpacing, y, x, y);
       
+
+      let inputAddress = null;
       if (index === 0) {
         if (this.isCoinbase(tx)) return;
         // for first tx, need to render input node(s)
@@ -138,9 +142,18 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
         const isChange = clusterIndex === tx.vout.length - 1;
         const type = isChange ? 'cluster' : 'external';
         // create input node
-        const inputAddress = 'prev in';
+        inputAddress = this.getAddressFromOutput(tx.vin[0].prevout);
         this.createNode(g, x - this.horizontalSpacing, y, tx.txid, type, inputAddress);
+      }
+
+      const additionalInputsLabel = this.getAdditionalInputsLabel(index, inputAddress);
+      if (additionalInputsLabel) {
+        const additionalY = y + this.verticalSpacing;
         
+        this.createNode(g, x - this.horizontalSpacing, additionalY, tx.txid, 'cluster', additionalInputsLabel);
+        
+        // Create S-shaped connection to external payment
+        this.createSCurve(g, x - this.horizontalSpacing, additionalY, x - (this.horizontalSpacing/4), y, false);
       }
 
       const externalOutputsLabel = this.getExternalOutputsLabel(tx, clusterIndex);
@@ -154,15 +167,6 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
         this.createSCurve(g, x - this.horizontalSpacing*3/4, y, x, externalY);
       }
 
-      const additionalInputsLabel = this.getAdditionalInputsLabel(index);
-      if (additionalInputsLabel) {
-        const additionalY = y + this.verticalSpacing;
-        
-        this.createNode(g, x - this.horizontalSpacing, additionalY, tx.txid, 'cluster', additionalInputsLabel);
-        
-        // Create S-shaped connection to external payment
-        this.createSCurve(g, x - this.horizontalSpacing, additionalY, x - (this.horizontalSpacing/4), y, false);
-      }
     });
   }
   
@@ -186,23 +190,26 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     return tx.vout.length - 1;
   }
 
-  private getAdditionalInputsLabel(txIndex: number): string {
+  private getAdditionalInputsLabel(txIndex: number, inputAddress?: string): string {
     const tx = this.displayedTransactions[txIndex];
-    if (tx.vin.length == 2) return this.findAdditionalInputAddress(txIndex);
+    if (tx.vin.length == 2) return this.findAdditionalInputAddress(txIndex, inputAddress);
 
     if (tx.vin.length > 2) return `Cluster ${tx.vin.length - 1}`;
 
     return null;
   }
 
-  private findAdditionalInputAddress(txIndex: number): string {
-    const prevTx = this.displayedTransactions[txIndex - 1];
-    if (!prevTx) {
-      console.error('No previous transaction found');
-      return null;
+  private findAdditionalInputAddress(txIndex: number, inputAddress?: string): string {
+    let clusterAddress = inputAddress // null unless input to first tx
+    if (!clusterAddress) {
+      const prevTx = this.displayedTransactions[txIndex - 1];
+      if (!prevTx) {
+        console.error('No previous transaction found');
+        return null;
+      }
+      const prevClusterIndex = this.clusterIndexes[txIndex - 1];
+      clusterAddress = this.getAddressFromOutput(prevTx.vout[prevClusterIndex]);
     }
-    const prevClusterIndex = this.clusterIndexes[txIndex - 1];
-    const clusterAddress = this.getAddressFromOutput(prevTx.vout[prevClusterIndex]);
     const currentTx = this.displayedTransactions[txIndex];
     // Look for an input address that is not the change address from previous tx
     for (let i = 0; i < currentTx.vin.length; i++) {
