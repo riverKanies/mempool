@@ -143,7 +143,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
         const type = isChange ? 'cluster' : 'external';
         // create input node
         inputAddress = this.getAddressFromOutput(tx.vin[0].prevout);
-        this.createNode(g, x - this.horizontalSpacing, y, tx.txid, type, inputAddress);
+        this.createNode(g, x - this.horizontalSpacing, y, tx.txid, type, inputAddress, true);
       }
 
       const additionalInputsLabel = this.getAdditionalInputsLabel(index, inputAddress);
@@ -242,7 +242,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     return 'Unknown Address';
   }
   
-  private createNode(parent: SVGElement, x: number, y: number, txid: string, type: 'cluster' | 'external' = 'cluster', address: string = 'Unknown') {
+  private createNode(parent: SVGElement, x: number, y: number, txid: string, type: 'cluster' | 'external' = 'cluster', address: string = 'Unknown', backtracking: boolean = false) {
     const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     circle.setAttribute('cx', x.toString());
     circle.setAttribute('cy', y.toString());
@@ -282,7 +282,11 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     // Update click event to fetch next transaction instead of navigating
     circle.addEventListener('click', () => {
       if (type !== 'cluster') return;
-      this.fetchNextTransaction(txid, address);
+      if (backtracking) {
+        this.fetchPrevTransaction(txid, address);
+      } else {
+        this.fetchNextTransaction(txid, address);
+      }
     });
     
     parent.appendChild(circle);
@@ -406,6 +410,11 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       this.renderTransactionFlow();
     }
   }
+  public prependTransaction(transaction: Transaction, clusterIndex: number): void {
+    this.displayedTransactions.unshift(transaction);
+    this.clusterIndexes.unshift(clusterIndex);
+    this.renderTransactionFlow();
+  }
   
   // Update fetchNextTransaction to better handle input matching
   private fetchNextTransaction(txid: string, address: string): void {
@@ -445,7 +454,29 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       }
     });
   }
+
+  private fetchPrevTransaction(txid: string, address: string): void {
+    const txIndex = this.displayedTransactions.findIndex(t => t.txid === txid);
+    const currentTx = this.displayedTransactions[txIndex];
+    const prevTxId = currentTx.vin[0].txid;
+    console.log('tx ids', txid, prevTxId);
+
+    this.electrsApiService.getTransaction$(prevTxId).subscribe(prevTx => {
+      // find clusterIndex
+      const clusterIndex = prevTx.vout.findIndex(vout => {
+        return address == this.getAddressFromOutput(vout);
+      })
+      this.electrsApiService.getOutspends$(prevTx.txid).subscribe(outspends => {
+        prevTx._outspends = outspends;
+        this.prependTransaction(prevTx, clusterIndex);  
+      });
+    });
+  }
+
 }
+
+
+
 function getScriptPubKey(address: string): string {
   return address.length === 66 ? '21' : '41' + address + 'ac'
 }
