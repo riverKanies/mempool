@@ -26,7 +26,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   private displayedTransactions: Transaction[] = [];
   private clusterIndexes: number[] = [];
   private branches: string[] = [];
-
+  private branchesArray: Transaction[][] = [];
   // SVG zoom and pan properties
   private scale = 1;
   private translateX = 0;
@@ -148,13 +148,17 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       if (additionalInputsLabel) {
         const branchIndex = this.branches.indexOf(additionalInputsLabel);
         const branchSpacing = (1+branchIndex) * 2 *this.verticalSpacing;
-        console.log('branchSpacing', branchSpacing, branchIndex);
+        console.log('branchSpacing', branchSpacing, branchIndex, this.branches);
         const additionalY = y + this.verticalSpacing + branchSpacing;
         
-        this.createNode(g, x - this.horizontalSpacing, additionalY, tx.txid, 'cluster', additionalInputsLabel);
+        this.createNode(g, x - this.horizontalSpacing, additionalY, tx.txid, 'cluster', additionalInputsLabel, true, true);
         
         // Create S-shaped connection to external payment
         this.createSCurve(g, x - this.horizontalSpacing, additionalY, x - (this.horizontalSpacing/4), y, false);
+
+        if (branchIndex > -1) {
+          this.renderBranch(branchIndex, additionalY, x - this.horizontalSpacing, g);
+        }
       }
 
       const externalOutputsLabel = this.getExternalOutputsLabel(tx, clusterIndex);
@@ -168,6 +172,35 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
         this.createSCurve(g, x - this.horizontalSpacing*3/4, y, x, externalY);
       }
 
+    });
+  }
+
+  private renderBranch(branchIndex: number, y: number, branchX: number, g: SVGElement) {
+    const branch = this.branchesArray[branchIndex];
+    const x = branchX - this.horizontalSpacing * (branch.length - 1);
+    branch.forEach((tx, index) => {
+      
+      // Create node for the address we're focusing on (using the cluster index)
+      const clusterIndex = this.clusterIndexes[index];
+      const clusterAddress = this.getAddressFromOutput(tx.vout[clusterIndex]);
+      this.createNode(g, x, y, tx.txid, 'cluster', clusterAddress);
+      
+      // create connection from previous
+      this.createHorizontalArrow(g, x - this.horizontalSpacing, y, x, y);
+      
+
+      let inputAddress = null;
+      if (index === 0) {
+        if (this.isCoinbase(tx)) return;
+        // for first tx, need to render input node(s)
+        // first determine if the output to the original address is change
+        // if its last vout in tx, then its change
+        const isChange = clusterIndex === tx.vout.length - 1;
+        const type = isChange ? 'cluster' : 'external';
+        // create input node
+        inputAddress = this.getAddressFromOutput(tx.vin[0].prevout);
+        this.createNode(g, x - this.horizontalSpacing, y, tx.txid, type, inputAddress, true);
+      }
     });
   }
   
@@ -243,7 +276,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     return 'Unknown Address';
   }
   
-  private createNode(parent: SVGElement, x: number, y: number, txid: string, type: 'cluster' | 'external' = 'cluster', address: string = 'Unknown', backtracking: boolean = false) {
+  private createNode(parent: SVGElement, x: number, y: number, txid: string, type: 'cluster' | 'external' = 'cluster', address: string = 'Unknown', backtracking: boolean = false, isBranch: boolean = false) {
     const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     circle.setAttribute('cx', x.toString());
     circle.setAttribute('cy', y.toString());
@@ -284,7 +317,11 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     circle.addEventListener('click', () => {
       if (type !== 'cluster') return;
       if (backtracking) {
-        this.fetchPrevTransaction(txid, address);
+        if (isBranch) {
+          this.fetchBranchPrevTransaction(txid, address);
+        } else {
+          this.fetchPrevTransaction(txid, address);
+        }
       } else {
         this.fetchNextTransaction(txid, address);
       }
@@ -416,6 +453,11 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     this.clusterIndexes.unshift(clusterIndex);
     this.renderTransactionFlow();
   }
+  private prependBranchTransaction(transaction: Transaction, branchIndex: number): void {
+    this.branchesArray[branchIndex].unshift(transaction);
+    console.log('branchesArray', this.branchesArray);
+    this.renderTransactionFlow();
+  }
   
   // Update fetchNextTransaction to better handle input matching
   private fetchNextTransaction(txid: string, address: string): void {
@@ -453,6 +495,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
               const inputAddress = this.getAddressFromOutput(output);
               if (inputAddress !== address) {
                 this.branches.push(inputAddress);
+                this.branchesArray.push([]);
                 // console.log('branches', this.branches);
               }
             }
@@ -485,6 +528,29 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       this.electrsApiService.getOutspends$(prevTx.txid).subscribe(outspends => {
         prevTx._outspends = outspends;
         this.prependTransaction(prevTx, clusterIndex);  
+      });
+    });
+  }
+
+  private fetchBranchPrevTransaction(txid: string, address: string): void {
+    const txIndex = this.displayedTransactions.findIndex(t => t.txid === txid);
+    const currentTx = this.displayedTransactions[txIndex];
+    const prevTxId = currentTx.vin.find(vin => {
+      const inputAddress = this.getAddressFromOutput(vin.prevout);
+      return inputAddress === address;
+    }).txid;
+    console.log('tx ids', txid, prevTxId);
+
+    this.electrsApiService.getTransaction$(prevTxId).subscribe(prevTx => {
+      // find branch index
+      const branchIndex = this.branches.indexOf(address);
+      // find clusterIndex
+      // const clusterIndex = prevTx.vout.findIndex(vout => {
+      //   return address == this.getAddressFromOutput(vout);
+      // })
+      this.electrsApiService.getOutspends$(prevTx.txid).subscribe(outspends => {
+        prevTx._outspends = outspends;
+        this.prependBranchTransaction(prevTx, branchIndex);  
       });
     });
   }
