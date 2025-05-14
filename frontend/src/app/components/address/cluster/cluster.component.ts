@@ -23,9 +23,10 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   firstTransaction: Transaction | null = null;
   isLoading = true;
   
-  // Component's internal transaction state
   private displayedTransactions: Transaction[] = [];
-  
+  private clusterIndexes: number[] = [];
+  private branches: string[] = [];
+
   // SVG zoom and pan properties
   private scale = 1;
   private translateX = 0;
@@ -70,9 +71,6 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   get viewBox(): string {
     return `0 0 ${this.svgWidth || 800} ${this.svgHeight || 300}`;
   }
-
-  // Add a new property to track change output indexes
-  private clusterIndexes: number[] = [];
 
   constructor(
     private electrsApiService: ElectrsApiService
@@ -148,7 +146,10 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
 
       const additionalInputsLabel = this.getAdditionalInputsLabel(index, inputAddress);
       if (additionalInputsLabel) {
-        const additionalY = y + this.verticalSpacing;
+        const branchIndex = this.branches.indexOf(additionalInputsLabel);
+        const branchSpacing = (1+branchIndex) * 2 *this.verticalSpacing;
+        console.log('branchSpacing', branchSpacing, branchIndex);
+        const additionalY = y + this.verticalSpacing + branchSpacing;
         
         this.createNode(g, x - this.horizontalSpacing, additionalY, tx.txid, 'cluster', additionalInputsLabel);
         
@@ -215,7 +216,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     for (let i = 0; i < currentTx.vin.length; i++) {
       const output = currentTx.vin[i].prevout;
       const inputAddress = this.getAddressFromOutput(output);
-      if (inputAddress !== clusterAddress) {
+      if (inputAddress !== clusterAddress) {// TODO: it is possible for multiple inputs to be the same address
         return inputAddress;
       }
     }
@@ -443,8 +444,23 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
           // Store outspends with the transaction
           nextTx._outspends = outspends;
           
+          // create new branch if addl input in cluster
+          // http://localhost:4200/address/1JHnexW73ZmTho4F7xYd8Qp5e89qLXrvZg
+          // ^ great to test branching
+          if (nextTx.vin.length == 2) {
+            for (let i = 0; i < nextTx.vin.length; i++) {
+              const output = nextTx.vin[i].prevout;
+              const inputAddress = this.getAddressFromOutput(output);
+              if (inputAddress !== address) {
+                this.branches.push(inputAddress);
+                // console.log('branches', this.branches);
+              }
+            }
+          }
+
           // Now add the transaction with its outspends to our display list
           this.addTransaction(nextTx);
+
         });
       } else {
         console.log('Next transaction does not reference the expected input');
