@@ -1,6 +1,7 @@
 import { Component, Input, OnChanges, SimpleChanges, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
 import { Transaction } from '@interfaces/electrs.interface';
 import { ElectrsApiService } from '@app/services/electrs-api.service';
+import { ClusterDrawService } from './cluster.draw';
 
 // known satoshi address: http://localhost:4200/address/0411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3
 // multiple inputs: http://localhost:4200/address/04ea1feff861b51fe3f5f8a3b12d0f4712db80e919548a80839fc47c6a21e66d957e9c5d8cd108c7a2d2324bad71f9904ac0ae7336507d785b17a2c115e427a32f
@@ -10,7 +11,7 @@ import { ElectrsApiService } from '@app/services/electrs-api.service';
 // prev in external: http://localhost:4200/address/1AqtQTfkngLf7P7TPdXZkWAhs5cqN7t7Fw
 
 // Add this interface near the top of the file
-interface TransactionObject {
+export interface TransactionObject {
   transaction: Transaction;
   clusterIndex: number;
 }
@@ -36,36 +37,6 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   private scale = 1;
   private translateX = 0;
   private translateY = 0;
-  private isDragging = false;
-  private startX = 0;
-  private startY = 0;
-  
-  // Visualization properties
-  private nodeRadius = 20;
-  private horizontalSpacing = 100;
-  private verticalSpacing = 80;
-  private svgWidth = 0;
-  private svgHeight = 0;
-  
-  // At the class level
-  private readonly clusterNodeStyles = {
-    fill: '#4caf50',
-    fillHover: '#81c784',
-    stroke: '#2e7d32',
-    strokeWidth: '2px'
-  };
-
-  private readonly externalNodeStyles = {
-    fill: '#2196f3',
-    fillHover: '#64b5f6',
-    stroke: '#0d47a1',
-    strokeWidth: '2px'
-  };
-
-  private readonly linkStyles = {
-    stroke: '#fff',
-    strokeWidth: '2'
-  };
   
   // Computed transform property for SVG
   get transform(): string {
@@ -77,8 +48,13 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     return `0 0 ${this.svgWidth || 800} ${this.svgHeight || 300}`;
   }
 
+  // SVG dimensions
+  private svgWidth = 800;
+  private svgHeight = 300;
+
   constructor(
-    private electrsApiService: ElectrsApiService
+    private electrsApiService: ElectrsApiService,
+    private clusterDrawService: ClusterDrawService
   ) {}
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -108,111 +84,47 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   private renderTransactionFlow() {
     if (!this.clusterSvg || !this.displayedTransactions.length) return;
     
-    const svg = this.clusterSvg.nativeElement;
-    const g = svg.querySelector('g');
-    
-    // Clear previous content
-    while (g.firstChild) {
-      g.removeChild(g.firstChild);
-    }
-    
-    // Use the component's internal transaction list
-    const orderedTransactions = [...this.displayedTransactions];
-    
-    // Calculate SVG dimensions based on transaction count
-    this.svgWidth = Math.max(800, orderedTransactions.length * this.horizontalSpacing + 100);
-    this.svgHeight = 300;
-    
-    // Create nodes and connections
-    orderedTransactions.forEach((txObj, index) => {
-      const tx = txObj.transaction;
-      const clusterIndex = txObj.clusterIndex;
-      const x = 120 + index * this.horizontalSpacing;
-      const y = 120;
-      
-      // Create node for the address we're focusing on (using the cluster index)
-      const clusterAddress = this.getAddressFromOutput(tx.vout[clusterIndex]);
-      this.createNode(g, x, y, tx.txid, 'cluster', clusterAddress);
-      
-      // create connection from previous
-      this.createHorizontalArrow(g, x - this.horizontalSpacing, y, x, y);
-      
-      let inputAddress = null;
-      if (index === 0) {
-        if (this.isCoinbase(tx)) return;
-        // for first tx, need to render input node(s)
-        // first determine if the output to the original address is change
-        // if its last vout in tx, then its change
-        const isChange = clusterIndex === tx.vout.length - 1;
-        const type = isChange ? 'cluster' : 'external';
-        // create input node
-        inputAddress = this.getAddressFromOutput(tx.vin[0].prevout);
-        this.createNode(g, x - this.horizontalSpacing, y, tx.txid, type, inputAddress, true);
-      }
-
-      const additionalInputsLabel = this.getAdditionalInputsLabel(index, inputAddress);
-      if (additionalInputsLabel) {
-        const branchIndex = this.branches.indexOf(additionalInputsLabel);
-        const branchSpacing = (1+branchIndex) * 2 *this.verticalSpacing;
-        console.log('branchSpacing', branchSpacing, branchIndex, this.branches);
-        const additionalY = y + this.verticalSpacing + branchSpacing;
-        
-        this.createNode(g, x - this.horizontalSpacing, additionalY, tx.txid, 'cluster', additionalInputsLabel, true, true);
-        
-        // Create S-shaped connection to external payment
-        this.createSCurve(g, x - this.horizontalSpacing, additionalY, x - (this.horizontalSpacing/4), y, false);
-
-        if (branchIndex > -1) {
-          this.renderBranch(branchIndex, additionalY, x - this.horizontalSpacing, g);
+    const dimensions = this.clusterDrawService.renderTransactionFlow(
+      this.clusterSvg,
+      this.displayedTransactions,
+      this.branches,
+      this.branchesArray,
+      this.addressString,
+      (txid, address, backtracking, isBranch) => {
+        if (backtracking) {
+          if (isBranch) {
+            this.fetchBranchPrevTransaction(txid, address);
+          } else {
+            this.fetchPrevTransaction(txid, address);
+          }
+        } else {
+          this.fetchNextTransaction(txid, address);
         }
       }
-
-      const externalOutputsLabel = this.getExternalOutputsLabel(tx, clusterIndex);
-      if (externalOutputsLabel) {
-        const externalY = y - this.verticalSpacing;
-        // Find an external address (one that's not the current address)
-        
-        this.createNode(g, x, externalY, tx.txid, 'external', externalOutputsLabel);
-        
-        // Create S-shaped connection to external payment
-        this.createSCurve(g, x - this.horizontalSpacing*3/4, y, x, externalY);
-      }
-    });
-  }
-
-  private renderBranch(branchIndex: number, y: number, branchX: number, g: SVGElement) {
-    const branch = this.branchesArray[branchIndex];
-    const x = branchX - this.horizontalSpacing * (branch.length - 1);
-    branch.forEach((txObj, index) => {
-      const tx = txObj.transaction;
-      const clusterIndex = txObj.clusterIndex;
-      
-      // Create node for the address we're focusing on (using the cluster index)
-      const clusterAddress = this.getAddressFromOutput(tx.vout[clusterIndex]);
-      this.createNode(g, x, y, tx.txid, 'cluster', clusterAddress);
-      
-      // create connection from previous
-      this.createHorizontalArrow(g, x - this.horizontalSpacing, y, x, y);
-      
-      let inputAddress = null;
-      if (index === 0) {
-        if (this.isCoinbase(tx)) return;
-        // for first tx, need to render input node(s)
-        // first determine if the output to the original address is change
-        // if its last vout in tx, then its change
-        const isChange = clusterIndex === tx.vout.length - 1;
-        const type = isChange ? 'cluster' : 'external';
-        // create input node
-        inputAddress = this.getAddressFromOutput(tx.vin[0].prevout);
-        this.createNode(g, x - this.horizontalSpacing, y, tx.txid, type, inputAddress, true);
-      }
-    });
+    );
+    
+    if (dimensions) {
+      this.svgWidth = dimensions.width;
+      this.svgHeight = dimensions.height;
+    }
   }
   
-  private getAddressFromOutput(output): string {
-    return output.scriptpubkey_address || output.scriptpubkey;
+  private initializeZoom() {
+    if (this.svgContainer) {
+      this.clusterDrawService.initializeZoom(
+        this.svgContainer,
+        (scale, translateX, translateY) => {
+          this.scale = scale;
+          this.translateX = translateX;
+          this.translateY = translateY;
+        },
+        this.scale,
+        this.translateX,
+        this.translateY
+      );
+    }
   }
-  
+
   // New method to find the most likely change output index
   private findChangeOutputIndex(tx: Transaction): number {
     // First check if any output spends back to the input address
@@ -227,223 +139,6 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     
     // If no direct match, assume the last output is change (common Bitcoin convention)
     return tx.vout.length - 1;
-  }
-
-  private getAdditionalInputsLabel(txIndex: number, inputAddress?: string): string {
-    const tx = this.displayedTransactions[txIndex].transaction;
-    if (tx.vin.length == 2) return this.findAdditionalInputAddress(txIndex, inputAddress);
-
-    if (tx.vin.length > 2) return `Cluster ${tx.vin.length - 1}`;
-
-    return null;
-  }
-
-  private findAdditionalInputAddress(txIndex: number, inputAddress?: string): string {
-    let clusterAddress = inputAddress // null unless input to first tx
-    if (!clusterAddress) {
-      const prevTxObj = this.displayedTransactions[txIndex - 1];
-      if (!prevTxObj) {
-        console.error('No previous transaction found');
-        return null;
-      }
-      const prevTx = prevTxObj.transaction;
-      const prevClusterIndex = prevTxObj.clusterIndex;
-      clusterAddress = this.getAddressFromOutput(prevTx.vout[prevClusterIndex]);
-    }
-    const currentTx = this.displayedTransactions[txIndex].transaction;
-    // Look for an input address that is not the change address from previous tx
-    for (let i = 0; i < currentTx.vin.length; i++) {
-      const output = currentTx.vin[i].prevout;
-      const inputAddress = this.getAddressFromOutput(output);
-      if (inputAddress !== clusterAddress) {// TODO: it is possible for multiple inputs to be the same address
-        return inputAddress;
-      }
-    }
-    return 'Unknown Address';
-  }
-
-  private getExternalOutputsLabel(tx: Transaction, clusterIndex: number): string {
-    if (tx.vout.length == 2) return this.findExternalAddress(tx, clusterIndex);
-
-    if (tx.vout.length > 2) return `Batch ${tx.vout.length - 1}`;
-
-    return null;
-  }
-  
-  // Updated method to find external address based on the change output index
-  private findExternalAddress(tx: Transaction, changeIndex: number): string {
-    // Look for an output that is not the change output
-    for (let i = 0; i < tx.vout.length; i++) {
-      if (i !== changeIndex) {
-        const output = tx.vout[i];
-        return output.scriptpubkey_address || output.scriptpubkey;
-      }
-    }
-    return 'Unknown Address';
-  }
-  
-  private createNode(parent: SVGElement, x: number, y: number, txid: string, type: 'cluster' | 'external' = 'cluster', address: string = 'Unknown', backtracking: boolean = false, isBranch: boolean = false) {
-    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    circle.setAttribute('cx', x.toString());
-    circle.setAttribute('cy', y.toString());
-    circle.setAttribute('r', this.nodeRadius.toString());
-    
-    // Apply styles directly to the element
-    if (type === 'cluster') {
-      circle.setAttribute('class', 'cluster-node');
-      circle.setAttribute('fill', this.clusterNodeStyles.fill);
-      circle.setAttribute('stroke', this.clusterNodeStyles.stroke);
-      circle.setAttribute('stroke-width', this.clusterNodeStyles.strokeWidth);
-      circle.setAttribute('cursor', 'pointer');
-      // Add hover effect with JavaScript since we can't use CSS :hover
-      circle.addEventListener('mouseenter', () => {
-        circle.setAttribute('fill', this.clusterNodeStyles.fillHover);
-      });
-      circle.addEventListener('mouseleave', () => {
-        circle.setAttribute('fill', this.clusterNodeStyles.fill);
-      });
-    } else {
-      circle.setAttribute('class', 'external-node');
-      circle.setAttribute('fill', this.externalNodeStyles.fill);
-      circle.setAttribute('stroke', this.externalNodeStyles.stroke);
-      circle.setAttribute('stroke-width', this.externalNodeStyles.strokeWidth);
-      circle.setAttribute('cursor', 'pointer');
-      // Add hover effect with JavaScript
-      circle.addEventListener('mouseenter', () => {
-        circle.setAttribute('fill', this.externalNodeStyles.fillHover);
-      });
-      circle.addEventListener('mouseleave', () => {
-        circle.setAttribute('fill', this.externalNodeStyles.fill);
-      });
-    }
-    
-    circle.setAttribute('data-txid', txid);
-    
-    // Update click event to fetch next transaction instead of navigating
-    circle.addEventListener('click', () => {
-      if (type !== 'cluster') return;
-      if (backtracking) {
-        if (isBranch) {
-          this.fetchBranchPrevTransaction(txid, address);
-        } else {
-          this.fetchPrevTransaction(txid, address);
-        }
-      } else {
-        this.fetchNextTransaction(txid, address);
-      }
-    });
-    
-    parent.appendChild(circle);
-    
-    // Add tooltip with truncated address
-    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    text.setAttribute('x', x.toString());
-    text.setAttribute('y', (y + this.nodeRadius + 15).toString());
-    text.setAttribute('text-anchor', 'middle');
-    text.setAttribute('class', 'node-label');
-    text.setAttribute('fill', '#fff');
-    text.setAttribute('font-size', '12px');
-    text.setAttribute('user-select', 'none');
-    
-    // Display truncated address instead of txid
-    const displayText = address ? 
-      (address.length > 10 ? `...${address.substring(address.length - 5)}` : address) : 
-      'Unknown';
-    text.textContent = displayText;
-    
-    parent.appendChild(text);
-  }
-  
-  private createHorizontalArrow(parent: SVGElement, x1: number, y1: number, x2: number, y2: number) {
-    const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    arrow.setAttribute('x1', (x1 + this.nodeRadius).toString());
-    arrow.setAttribute('y1', y1.toString());
-    arrow.setAttribute('x2', (x2 - this.nodeRadius).toString());
-    arrow.setAttribute('y2', y2.toString());
-    arrow.setAttribute('stroke', this.linkStyles.stroke);
-    arrow.setAttribute('stroke-width', this.linkStyles.strokeWidth);
-    arrow.setAttribute('marker-end', 'url(#arrowhead)');
-    arrow.setAttribute('class', 'cluster-link');
-    parent.appendChild(arrow);
-  }
-  
-  private createSCurve(parent: SVGElement, x1: number, y1: number, x2: number, y2: number, renderArrow: boolean = true) {
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    const controlX1 = x1 + this.horizontalSpacing * 0.5;
-    const controlY1 = y1;
-    const controlX2 = x2 - this.horizontalSpacing * 0.5;
-    const controlY2 = y2;
-    
-    path.setAttribute('d', `M ${x1 + this.nodeRadius} ${y1} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${x2 - this.nodeRadius} ${y2}`);
-    path.setAttribute('stroke', this.linkStyles.stroke);
-    path.setAttribute('fill', 'none');
-    path.setAttribute('stroke-width', this.linkStyles.strokeWidth);
-    if (renderArrow) path.setAttribute('marker-end', 'url(#arrowhead)');
-    path.setAttribute('class', 'cluster-link');
-    parent.appendChild(path);
-  }
-  
-  private isCoinbase(tx: Transaction): boolean {
-    return tx.vin.some(input => input.is_coinbase);
-  }
-  
-  private initializeZoom() {
-    if (this.svgContainer) {
-      const element = this.svgContainer.nativeElement;
-      
-      // Mouse wheel zoom
-      element.addEventListener('wheel', (event: WheelEvent) => {
-        event.preventDefault();
-        
-        // Calculate mouse position relative to the SVG container
-        const rect = element.getBoundingClientRect();
-        const mouseX = event.clientX - rect.left;
-        const mouseY = event.clientY - rect.top;
-        
-        const zoomFactor = 1 - Math.sign(event.deltaY) * 0.01; // Adjusted for smoother zooming
-        const newScale = Math.max(0.5, Math.min(this.scale * zoomFactor, 5));
-        
-        // Calculate the mouse position in SVG coordinates before zoom
-        const svgPointBefore = {
-          x: (mouseX - this.translateX) / this.scale,
-          y: (mouseY - this.translateY) / this.scale
-        };
-
-        // Update scale
-        this.scale = newScale;
-
-        // Adjust translation to keep the point under the mouse fixed
-        this.translateX = mouseX - svgPointBefore.x * this.scale;
-        this.translateY = mouseY - svgPointBefore.y * this.scale;
-      }, { passive: false });
-      
-      // Mouse drag for panning
-      element.addEventListener('mousedown', (event: MouseEvent) => {
-        this.isDragging = true;
-        this.startX = event.clientX - this.translateX;
-        this.startY = event.clientY - this.translateY;
-        element.style.cursor = 'grabbing';
-      });
-      
-      element.addEventListener('mousemove', (event: MouseEvent) => {
-        if (this.isDragging) {
-          this.translateX = event.clientX - this.startX;
-          this.translateY = event.clientY - this.startY;
-        }
-      });
-      
-      // End dragging
-      const endDrag = () => {
-        this.isDragging = false;
-        element.style.cursor = 'grab';
-      };
-      
-      element.addEventListener('mouseup', endDrag);
-      element.addEventListener('mouseleave', endDrag);
-      
-      // Set initial cursor
-      element.style.cursor = 'grab';
-    }
   }
 
   // Update the addTransaction method to use TransactionObject
@@ -567,6 +262,11 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
         this.prependBranchTransaction(prevTx, branchIndex, clusterIndex);  
       });
     });
+  }
+  
+  // Helper method needed by component
+  private getAddressFromOutput(output): string {
+    return output.scriptpubkey_address || output.scriptpubkey;
   }
 }
 
