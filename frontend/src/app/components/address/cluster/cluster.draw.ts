@@ -156,6 +156,28 @@ export class ClusterDrawService {
         this.createNode(g, x - this.horizontalSpacing, y, tx.txid, type, inputAddress, true, false, onNodeClick);
       }
       
+      // Add additional inputs node (similar to main flow but without creating sub-branches)
+      const additionalInputsLabel = this.getAdditionalInputsLabel(index, inputAddress, branch);
+      if (additionalInputsLabel) {
+        const additionalY = y + this.verticalSpacing;
+        
+        this.createNode(g, x - this.horizontalSpacing, additionalY, tx.txid, 'cluster', additionalInputsLabel, true, true, onNodeClick);
+        
+        // Create S-shaped connection to additional input
+        this.createSCurve(g, x - this.horizontalSpacing, additionalY, x - (this.horizontalSpacing/4), y, false);
+      }
+
+      // Add external outputs node (similar to main flow)
+      const externalOutputsLabel = this.getExternalOutputsLabel(tx, clusterIndex);
+      if (externalOutputsLabel) {
+        const externalY = y - this.verticalSpacing;
+        
+        this.createNode(g, x, externalY, tx.txid, 'external', externalOutputsLabel, false, false, onNodeClick);
+        
+        // Create S-shaped connection to external payment
+        this.createSCurve(g, x - this.horizontalSpacing*3/4, y, x, externalY);
+      }
+      
       x -= this.horizontalSpacing;
     });
   }
