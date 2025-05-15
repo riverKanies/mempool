@@ -2,6 +2,11 @@ import { ElementRef, Injectable } from '@angular/core';
 import { Transaction } from '@interfaces/electrs.interface';
 import { TransactionObject } from './cluster.component';
 
+interface FirstTxData {
+  inputAddress: string;
+  type: 'cluster' | 'external';
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -104,20 +109,21 @@ export class ClusterDrawService {
       this.createHorizontalArrow(g, x - this.horizontalSpacing, y, x, y);
       
       
-      let inputAddress = null;
+      let firstTxData: FirstTxData = null;
       if (index === 0) {
         if (this.isCoinbase(tx)) return;
         // for first tx, need to render input node(s)
         // first determine if the output to the original address is change
         // if its last vout in tx, then its change
-        const isChange = clusterIndex === tx.vout.length - 1;
-        const type = isChange ? 'cluster' : 'external';
+        firstTxData = {
+          inputAddress: this.getAddressFromOutput(tx.vin[0].prevout),
+          type: clusterIndex === tx.vout.length - 1 ? 'cluster' : 'external'
+        }
         // create input node
-        inputAddress = this.getAddressFromOutput(tx.vin[0].prevout);
-        this.createNode(g, x - this.horizontalSpacing, y, tx.txid, type, inputAddress, true, false, onNodeClick);
+        this.createNode(g, x - this.horizontalSpacing, y, tx.txid, firstTxData.type, firstTxData.inputAddress, true, false, onNodeClick);
       }
 
-      const additionalInputsLabel = this.getAdditionalInputsLabel(index, inputAddress, transactions);
+      const additionalInputsLabel = this.getAdditionalInputsLabel(index, firstTxData?.inputAddress, transactions);
       if (additionalInputsLabel) {
         // Calculate vertical position for additional inputs
         let additionalY = y + this.verticalSpacing;
@@ -131,7 +137,7 @@ export class ClusterDrawService {
           }
         }
         
-        this.createNode(g, x - this.horizontalSpacing, additionalY, tx.txid, 'cluster', additionalInputsLabel, true, true, onNodeClick);
+        this.createNode(g, x - this.horizontalSpacing, additionalY, tx.txid, firstTxData?.type || 'cluster', additionalInputsLabel, true, true, onNodeClick);
         
         // Create S-shaped connection to external payment
         this.createSCurve(g, x - this.horizontalSpacing, additionalY, x - (this.horizontalSpacing/4), y, false);
