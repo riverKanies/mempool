@@ -126,8 +126,8 @@ export class ClusterDrawService {
         if (isMainBranch) {
           const branchIndex = branches.indexOf(additionalInputsLabel);
           if (branchIndex > -1) {
-            const branchSpacing = (1+branchIndex) * 2 * this.verticalSpacing;
-            additionalY = y + this.verticalSpacing + branchSpacing;
+            const branchSpacing = (1+branchIndex) * 3 * this.verticalSpacing;
+            additionalY = y + branchSpacing;
           }
         }
         
