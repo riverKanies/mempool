@@ -9,6 +9,12 @@ import { ElectrsApiService } from '@app/services/electrs-api.service';
 
 // prev in external: http://localhost:4200/address/1AqtQTfkngLf7P7TPdXZkWAhs5cqN7t7Fw
 
+// Add this interface near the top of the file
+interface TransactionObject {
+  transaction: Transaction;
+  clusterIndex: number;
+}
+
 @Component({
   selector: 'app-address-cluster',
   templateUrl: './cluster.component.html',
@@ -23,10 +29,9 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   firstTransaction: Transaction | null = null;
   isLoading = true;
   
-  private displayedTransactions: Transaction[] = [];
-  private clusterIndexes: number[] = [];
+  private displayedTransactions: TransactionObject[] = [];
   private branches: string[] = [];
-  private branchesArray: Transaction[][] = [];
+  private branchesArray: TransactionObject[][] = [];
   // SVG zoom and pan properties
   private scale = 1;
   private translateX = 0;
@@ -82,10 +87,11 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       this.firstTransaction = this.transactions[this.transactions.length - 1]; // Get the oldest transaction
       
       // Initialize the displayed transactions with just the first/oldest transaction
-      this.displayedTransactions = [this.firstTransaction];
-      
-      // Initialize the first cluster index by finding the most likely change output
-      this.clusterIndexes = [this.findChangeOutputIndex(this.firstTransaction)];
+      const clusterIndex = this.findChangeOutputIndex(this.firstTransaction);
+      this.displayedTransactions = [{
+        transaction: this.firstTransaction,
+        clusterIndex: clusterIndex
+      }];
       
       // After data is loaded, render the visualization
       setTimeout(() => this.renderTransactionFlow(), 0);
@@ -110,7 +116,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       g.removeChild(g.firstChild);
     }
     
-    // Use the component's internal transaction list instead of the input transactions
+    // Use the component's internal transaction list
     const orderedTransactions = [...this.displayedTransactions];
     
     // Calculate SVG dimensions based on transaction count
@@ -118,19 +124,19 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     this.svgHeight = 300;
     
     // Create nodes and connections
-    orderedTransactions.forEach((tx, index) => {
+    orderedTransactions.forEach((txObj, index) => {
+      const tx = txObj.transaction;
+      const clusterIndex = txObj.clusterIndex;
       const x = 120 + index * this.horizontalSpacing;
       const y = 120;
       
       // Create node for the address we're focusing on (using the cluster index)
-      const clusterIndex = this.clusterIndexes[index];
       const clusterAddress = this.getAddressFromOutput(tx.vout[clusterIndex]);
       this.createNode(g, x, y, tx.txid, 'cluster', clusterAddress);
       
       // create connection from previous
       this.createHorizontalArrow(g, x - this.horizontalSpacing, y, x, y);
       
-
       let inputAddress = null;
       if (index === 0) {
         if (this.isCoinbase(tx)) return;
@@ -171,24 +177,23 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
         // Create S-shaped connection to external payment
         this.createSCurve(g, x - this.horizontalSpacing*3/4, y, x, externalY);
       }
-
     });
   }
 
   private renderBranch(branchIndex: number, y: number, branchX: number, g: SVGElement) {
     const branch = this.branchesArray[branchIndex];
     const x = branchX - this.horizontalSpacing * (branch.length - 1);
-    branch.forEach((tx, index) => {
+    branch.forEach((txObj, index) => {
+      const tx = txObj.transaction;
+      const clusterIndex = txObj.clusterIndex;
       
       // Create node for the address we're focusing on (using the cluster index)
-      const clusterIndex = this.clusterIndexes[index];
       const clusterAddress = this.getAddressFromOutput(tx.vout[clusterIndex]);
       this.createNode(g, x, y, tx.txid, 'cluster', clusterAddress);
       
       // create connection from previous
       this.createHorizontalArrow(g, x - this.horizontalSpacing, y, x, y);
       
-
       let inputAddress = null;
       if (index === 0) {
         if (this.isCoinbase(tx)) return;
@@ -225,7 +230,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   }
 
   private getAdditionalInputsLabel(txIndex: number, inputAddress?: string): string {
-    const tx = this.displayedTransactions[txIndex];
+    const tx = this.displayedTransactions[txIndex].transaction;
     if (tx.vin.length == 2) return this.findAdditionalInputAddress(txIndex, inputAddress);
 
     if (tx.vin.length > 2) return `Cluster ${tx.vin.length - 1}`;
@@ -236,15 +241,16 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   private findAdditionalInputAddress(txIndex: number, inputAddress?: string): string {
     let clusterAddress = inputAddress // null unless input to first tx
     if (!clusterAddress) {
-      const prevTx = this.displayedTransactions[txIndex - 1];
-      if (!prevTx) {
+      const prevTxObj = this.displayedTransactions[txIndex - 1];
+      if (!prevTxObj) {
         console.error('No previous transaction found');
         return null;
       }
-      const prevClusterIndex = this.clusterIndexes[txIndex - 1];
+      const prevTx = prevTxObj.transaction;
+      const prevClusterIndex = prevTxObj.clusterIndex;
       clusterAddress = this.getAddressFromOutput(prevTx.vout[prevClusterIndex]);
     }
-    const currentTx = this.displayedTransactions[txIndex];
+    const currentTx = this.displayedTransactions[txIndex].transaction;
     // Look for an input address that is not the change address from previous tx
     for (let i = 0; i < currentTx.vin.length; i++) {
       const output = currentTx.vin[i].prevout;
@@ -440,33 +446,44 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     }
   }
 
-  // Update the addTransaction method to also determine the change output index
+  // Update the addTransaction method to use TransactionObject
   public addTransaction(transaction: Transaction): void {
-    if (!this.displayedTransactions.some(tx => tx.txid === transaction.txid)) {
-      this.displayedTransactions.push(transaction);
-      this.clusterIndexes.push(this.findChangeOutputIndex(transaction));
+    if (!this.displayedTransactions.some(txObj => txObj.transaction.txid === transaction.txid)) {
+      const clusterIndex = this.findChangeOutputIndex(transaction);
+      this.displayedTransactions.push({
+        transaction: transaction,
+        clusterIndex: clusterIndex
+      });
       this.renderTransactionFlow();
     }
   }
+
   public prependTransaction(transaction: Transaction, clusterIndex: number): void {
-    this.displayedTransactions.unshift(transaction);
-    this.clusterIndexes.unshift(clusterIndex);
+    this.displayedTransactions.unshift({
+      transaction: transaction,
+      clusterIndex: clusterIndex
+    });
     this.renderTransactionFlow();
   }
+
   private prependBranchTransaction(transaction: Transaction, branchIndex: number): void {
-    this.branchesArray[branchIndex].unshift(transaction);
+    const clusterIndex = this.findChangeOutputIndex(transaction);
+    this.branchesArray[branchIndex].unshift({
+      transaction: transaction,
+      clusterIndex: clusterIndex
+    });
     console.log('branchesArray', this.branchesArray);
     this.renderTransactionFlow();
   }
   
-  // Update fetchNextTransaction to better handle input matching
+  // Update fetchNextTransaction to use TransactionObject
   private fetchNextTransaction(txid: string, address: string): void {
     console.log('fetchNextTransaction', address);
-    const txIndex = this.displayedTransactions.findIndex(t => t.txid === txid);
+    const txIndex = this.displayedTransactions.findIndex(t => t.transaction.txid === txid);
     
-    const currentTx = this.displayedTransactions[txIndex];
-
-    const outputIndex = this.clusterIndexes[txIndex]
+    const currentTxObj = this.displayedTransactions[txIndex];
+    const currentTx = currentTxObj.transaction;
+    const outputIndex = currentTxObj.clusterIndex;
     
     const outspend = currentTx._outspends[outputIndex];
 
@@ -496,14 +513,12 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
               if (inputAddress !== address) {
                 this.branches.push(inputAddress);
                 this.branchesArray.push([]);
-                // console.log('branches', this.branches);
               }
             }
           }
 
           // Now add the transaction with its outspends to our display list
           this.addTransaction(nextTx);
-
         });
       } else {
         console.log('Next transaction does not reference the expected input');
@@ -515,8 +530,8 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   }
 
   private fetchPrevTransaction(txid: string, address: string): void {
-    const txIndex = this.displayedTransactions.findIndex(t => t.txid === txid);
-    const currentTx = this.displayedTransactions[txIndex];
+    const txIndex = this.displayedTransactions.findIndex(t => t.transaction.txid === txid);
+    const currentTx = this.displayedTransactions[txIndex].transaction;
     const prevTxId = currentTx.vin[0].txid;
     console.log('tx ids', txid, prevTxId);
 
@@ -524,7 +539,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       // find clusterIndex
       const clusterIndex = prevTx.vout.findIndex(vout => {
         return address == this.getAddressFromOutput(vout);
-      })
+      });
       this.electrsApiService.getOutspends$(prevTx.txid).subscribe(outspends => {
         prevTx._outspends = outspends;
         this.prependTransaction(prevTx, clusterIndex);  
@@ -533,8 +548,8 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   }
 
   private fetchBranchPrevTransaction(txid: string, address: string): void {
-    const txIndex = this.displayedTransactions.findIndex(t => t.txid === txid);
-    const currentTx = this.displayedTransactions[txIndex];
+    const txIndex = this.displayedTransactions.findIndex(t => t.transaction.txid === txid);
+    const currentTx = this.displayedTransactions[txIndex].transaction;
     const prevTxId = currentTx.vin.find(vin => {
       const inputAddress = this.getAddressFromOutput(vin.prevout);
       return inputAddress === address;
@@ -554,10 +569,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       });
     });
   }
-
 }
-
-
 
 function getScriptPubKey(address: string): string {
   return address.length === 66 ? '21' : '41' + address + 'ac'
