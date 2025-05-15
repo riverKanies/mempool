@@ -50,7 +50,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
 
   // SVG dimensions
   private svgWidth = 800;
-  private svgHeight = 300;
+  private svgHeight = 700;
 
   constructor(
     private electrsApiService: ElectrsApiService,
