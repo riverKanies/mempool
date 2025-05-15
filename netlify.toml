@@ -10,6 +10,12 @@
   force = true
 
 [[redirects]]
+  from = "/api/v1/ws"
+  to = "wss://mempool.space/api/v1/ws"
+  status = 101
+  force = true
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200 
