@@ -466,8 +466,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     this.renderTransactionFlow();
   }
 
-  private prependBranchTransaction(transaction: Transaction, branchIndex: number): void {
-    const clusterIndex = this.findChangeOutputIndex(transaction);
+  private prependBranchTransaction(transaction: Transaction, branchIndex: number, clusterIndex: number): void {
     this.branchesArray[branchIndex].unshift({
       transaction: transaction,
       clusterIndex: clusterIndex
@@ -560,12 +559,12 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       // find branch index
       const branchIndex = this.branches.indexOf(address);
       // find clusterIndex
-      // const clusterIndex = prevTx.vout.findIndex(vout => {
-      //   return address == this.getAddressFromOutput(vout);
-      // })
+      const clusterIndex = prevTx.vout.findIndex(vout => {
+        return address == this.getAddressFromOutput(vout);
+      })
       this.electrsApiService.getOutspends$(prevTx.txid).subscribe(outspends => {
         prevTx._outspends = outspends;
-        this.prependBranchTransaction(prevTx, branchIndex);  
+        this.prependBranchTransaction(prevTx, branchIndex, clusterIndex);  
       });
     });
   }
