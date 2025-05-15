@@ -63,12 +63,38 @@ export class ClusterDrawService {
     this.svgWidth = Math.max(800, orderedTransactions.length * this.horizontalSpacing + 100);
     this.svgHeight = 300;
     
-    // Create nodes and connections
-    orderedTransactions.forEach((txObj, index) => {
+    // Render the main transaction flow
+    this.renderBranchFlow(
+      g, 
+      orderedTransactions, 
+      120, // x starting position
+      120, // y position
+      branches,
+      branchesArray,
+      onNodeClick,
+      true // isMainBranch
+    );
+    
+    return { width: this.svgWidth, height: this.svgHeight };
+  }
+
+  /**
+   * Generalized method to render transaction flows for both main and sub-branches
+   */
+  private renderBranchFlow(
+    g: SVGElement,
+    transactions: TransactionObject[],
+    startX: number,
+    y: number,
+    branches: string[],
+    branchesArray: TransactionObject[][],
+    onNodeClick: (txid: string, address: string, backtracking: boolean, isBranch: boolean) => void,
+    isMainBranch: boolean = false
+  ) {
+    transactions.forEach((txObj, index) => {
       const tx = txObj.transaction;
       const clusterIndex = txObj.clusterIndex;
-      const x = 120 + index * this.horizontalSpacing;
-      const y = 120;
+      const x = startX + index * this.horizontalSpacing;
       
       // Create node for the address we're focusing on (using the cluster index)
       const clusterAddress = this.getAddressFromOutput(tx.vout[clusterIndex]);
@@ -91,26 +117,37 @@ export class ClusterDrawService {
         this.createNode(g, x - this.horizontalSpacing, y, tx.txid, type, inputAddress, true, false, onNodeClick);
       }
 
-      const additionalInputsLabel = this.getAdditionalInputsLabel(index, inputAddress, displayedTransactions);
+      const additionalInputsLabel = this.getAdditionalInputsLabel(index, inputAddress, transactions);
       if (additionalInputsLabel) {
-        const branchIndex = branches.indexOf(additionalInputsLabel);
-        const branchSpacing = (1+branchIndex) * 2 * this.verticalSpacing;
-        const additionalY = y + this.verticalSpacing + branchSpacing;
+        // Calculate vertical position for additional inputs
+        let additionalY = y + this.verticalSpacing;
+        
+        // For main branch, handle sub-branches
+        if (isMainBranch) {
+          const branchIndex = branches.indexOf(additionalInputsLabel);
+          if (branchIndex > -1) {
+            const branchSpacing = (1+branchIndex) * 2 * this.verticalSpacing;
+            additionalY = y + this.verticalSpacing + branchSpacing;
+          }
+        }
         
         this.createNode(g, x - this.horizontalSpacing, additionalY, tx.txid, 'cluster', additionalInputsLabel, true, true, onNodeClick);
         
         // Create S-shaped connection to external payment
         this.createSCurve(g, x - this.horizontalSpacing, additionalY, x - (this.horizontalSpacing/4), y, false);
 
-        if (branchIndex > -1) {
-          this.renderBranch(branchIndex, additionalY, x - this.horizontalSpacing, g, branchesArray, onNodeClick);
+        // Only render sub-branches from the main branch
+        if (isMainBranch) {
+          const branchIndex = branches.indexOf(additionalInputsLabel);
+          if (branchIndex > -1) {
+            this.renderSubBranch(branchIndex, additionalY, x - this.horizontalSpacing, g, branchesArray, onNodeClick);
+          }
         }
       }
 
       const externalOutputsLabel = this.getExternalOutputsLabel(tx, clusterIndex);
       if (externalOutputsLabel) {
         const externalY = y - this.verticalSpacing;
-        // Find an external address (one that's not the current address)
         
         this.createNode(g, x, externalY, tx.txid, 'external', externalOutputsLabel, false, false, onNodeClick);
         
@@ -118,11 +155,12 @@ export class ClusterDrawService {
         this.createSCurve(g, x - this.horizontalSpacing*3/4, y, x, externalY);
       }
     });
-    
-    return { width: this.svgWidth, height: this.svgHeight };
   }
 
-  private renderBranch(
+  /**
+   * Renders a sub-branch of transactions
+   */
+  private renderSubBranch(
     branchIndex: number, 
     y: number, 
     branchX: number, 
@@ -131,55 +169,19 @@ export class ClusterDrawService {
     onNodeClick: (txid: string, address: string, backtracking: boolean, isBranch: boolean) => void
   ) {
     const branch = branchesArray[branchIndex];
-    let x = branchX - this.horizontalSpacing * (branch.length - 1);
+    // Calculate starting X position for the branch (right to left)
+    const startX = branchX - this.horizontalSpacing * (branch.length - 1);
     
-    branch.forEach((txObj, index) => {
-      const tx = txObj.transaction;
-      const clusterIndex = txObj.clusterIndex;
-      
-      // Create node for the address we're focusing on (using the cluster index)
-      const clusterAddress = this.getAddressFromOutput(tx.vout[clusterIndex]);
-      this.createNode(g, x, y, tx.txid, 'cluster', clusterAddress, false, false, onNodeClick);
-      
-      this.createHorizontalArrow(g, x - this.horizontalSpacing, y, x, y);
-      
-      let inputAddress = null;
-      if (index === 0) {
-        if (this.isCoinbase(tx)) return;
-        // for first tx, need to render input node(s)
-        // first determine if the output to the original address is change
-        // if its last vout in tx, then its change
-        const isChange = clusterIndex === tx.vout.length - 1;
-        const type = isChange ? 'cluster' : 'external';
-        // create input node
-        inputAddress = this.getAddressFromOutput(tx.vin[0].prevout);
-        this.createNode(g, x - this.horizontalSpacing, y, tx.txid, type, inputAddress, true, false, onNodeClick);
-      }
-      
-      // Add additional inputs node (similar to main flow but without creating sub-branches)
-      const additionalInputsLabel = this.getAdditionalInputsLabel(index, inputAddress, branch);
-      if (additionalInputsLabel) {
-        const additionalY = y + this.verticalSpacing;
-        
-        this.createNode(g, x - this.horizontalSpacing, additionalY, tx.txid, 'cluster', additionalInputsLabel, true, true, onNodeClick);
-        
-        // Create S-shaped connection to additional input
-        this.createSCurve(g, x - this.horizontalSpacing, additionalY, x - (this.horizontalSpacing/4), y, false);
-      }
-
-      // Add external outputs node (similar to main flow)
-      const externalOutputsLabel = this.getExternalOutputsLabel(tx, clusterIndex);
-      if (externalOutputsLabel) {
-        const externalY = y - this.verticalSpacing;
-        
-        this.createNode(g, x, externalY, tx.txid, 'external', externalOutputsLabel, false, false, onNodeClick);
-        
-        // Create S-shaped connection to external payment
-        this.createSCurve(g, x - this.horizontalSpacing*3/4, y, x, externalY);
-      }
-      
-      x -= this.horizontalSpacing;
-    });
+    this.renderBranchFlow(
+      g,
+      branch,
+      startX,
+      y,
+      [], // No sub-branches for branches
+      [], // No branch array needed
+      onNodeClick,
+      false // Not a main branch
+    );
   }
   
   private createNode(
