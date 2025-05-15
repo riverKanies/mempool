@@ -1,6 +1,6 @@
 [build]
   base = "frontend/"
-  publish = "dist/"
+  publish = "dist/mempool/browser/en-US/"
   command = "npm run config:defaults:mempool && npm install && npm run build"
 
 [[redirects]]
