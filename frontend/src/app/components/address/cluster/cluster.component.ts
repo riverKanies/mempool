@@ -35,7 +35,6 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   @ViewChild('svgContainer') svgContainer: ElementRef;
   @ViewChild('tooltip') tooltipElement: ElementRef;
   
-  firstTransaction: Transaction | null = null;
   isLoading = true;
   
   private displayedTransactions: TransactionObject[] = [];
@@ -68,15 +67,9 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   ngOnChanges(changes: SimpleChanges): void {
     if (changes.transactions && this.transactions?.length) {
       this.isLoading = false;
-      this.firstTransaction = this.transactions[this.transactions.length - 1]; // Get the oldest transaction
       
-      // Initialize the displayed transactions with just the first/oldest transaction
-      const clusterIndex = this.findChangeOutputIndex(this.firstTransaction);
-      this.displayedTransactions = [{
-        transaction: this.firstTransaction,
-        clusterIndex: clusterIndex,
-        heuristics: this.getHeuristics(this.firstTransaction)
-      }];
+      // Build a chain of connected transactions instead of just using the first one
+      this.buildTransactionChain();
       
       // After data is loaded, render the visualization
       setTimeout(() => this.renderTransactionFlow(), 0);
@@ -191,7 +184,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     const currentTxObj = this.displayedTransactions[txIndex];
     const currentTx = currentTxObj.transaction;
     const outputIndex = currentTxObj.clusterIndex;
-    
+
     const outspend = currentTx._outspends[outputIndex];
 
     // Fetch the transaction that spent this specific output
@@ -297,6 +290,52 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   // Helper method needed by component
   private getAddressFromOutput(output): string {
     return output.scriptpubkey_address || output.scriptpubkey;
+  }
+
+  // New method to build a chain of connected transactions
+  private buildTransactionChain(): void {
+    // Clear any existing transactions
+    this.displayedTransactions = [];
+    
+    // Create a map of txid -> transaction for quick lookups
+    const txMap = new Map<string, Transaction>();
+    this.transactions.forEach(tx => txMap.set(tx.txid, tx));
+    
+    // Start with the oldest transaction
+    let currentTx = this.transactions[this.transactions.length - 1]; // Get the oldest transaction
+    
+    // Track processed transactions to avoid cycles
+    const processedTxids = new Set<string>();
+    
+    // Add a small delay to ensure _outspends is available
+    while (currentTx && !processedTxids.has(currentTx.txid)) {
+      processedTxids.add(currentTx.txid);
+      
+      // Find the change output index
+      const clusterIndex = this.findChangeOutputIndex(currentTx);
+      
+      // Add to displayed transactions
+      this.displayedTransactions.push({
+        transaction: currentTx,
+        clusterIndex: clusterIndex,
+        heuristics: this.getHeuristics(currentTx)
+      });
+      
+      // Check if this transaction's output is spent by another transaction in our list
+      if (currentTx._outspends && 
+          currentTx._outspends[clusterIndex] && 
+          currentTx._outspends[clusterIndex].txid && 
+          txMap.has(currentTx._outspends[clusterIndex].txid)) {
+        // Move to the next transaction in the chain
+        currentTx = txMap.get(currentTx._outspends[clusterIndex].txid);
+      } else {
+        // No more connected transactions in our list
+        break;
+      }
+    }
+    
+    console.log(`Built transaction chain with ${this.displayedTransactions.length} connected transactions`);
+    this.renderTransactionFlow();
   }
 }
 

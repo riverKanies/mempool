@@ -512,4 +512,13 @@ export class AddressComponent implements OnInit, OnDestroy {
     this.blockTxSubscription.unsubscribe();
     this.websocketService.stopTrackingAddress();
   }
+
+  public areOutspendsLoaded(): boolean {
+    if (!this.transactions || this.transactions.length === 0) {
+      return false;
+    }
+    
+    // Check if all transactions have _outspends property
+    return this.transactions.every(tx => tx._outspends !== undefined);
+  }
 }

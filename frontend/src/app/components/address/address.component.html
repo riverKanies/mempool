@@ -74,7 +74,7 @@
     </div>
 
     <!-- Add the cluster component here -->
-    <ng-container *ngIf="(stateService.backend$ | async) === 'esplora' && address && transactions && transactions.length > 0">
+    <ng-container *ngIf="(stateService.backend$ | async) === 'esplora' && address && transactions && transactions.length > 0 && areOutspendsLoaded()">
       <br>
       <div class="title-tx">
         <h2 class="text-left" i18n="address.cluster-analysis">Cluster Analysis</h2>
