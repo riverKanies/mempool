@@ -10,10 +10,17 @@ import { ClusterDrawService } from './cluster.draw';
 
 // prev in external: http://localhost:4200/address/1AqtQTfkngLf7P7TPdXZkWAhs5cqN7t7Fw
 
+export enum HueristicType {
+  cio,
+  change,
+  reused
+}
+
 // Add this interface near the top of the file
 export interface TransactionObject {
   transaction: Transaction;
   clusterIndex: number;
+  hueristics: HueristicType[];
 }
 
 @Component({
@@ -67,7 +74,8 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       const clusterIndex = this.findChangeOutputIndex(this.firstTransaction);
       this.displayedTransactions = [{
         transaction: this.firstTransaction,
-        clusterIndex: clusterIndex
+        clusterIndex: clusterIndex,
+        hueristics: this.getHueristics(this.firstTransaction)
       }];
       
       // After data is loaded, render the visualization
@@ -149,7 +157,8 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       const clusterIndex = this.findChangeOutputIndex(transaction);
       this.displayedTransactions.push({
         transaction: transaction,
-        clusterIndex: clusterIndex
+        clusterIndex: clusterIndex,
+        hueristics: this.getHueristics(transaction)
       });
       this.renderTransactionFlow();
     }
@@ -158,7 +167,8 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   public prependTransaction(transaction: Transaction, clusterIndex: number): void {
     this.displayedTransactions.unshift({
       transaction: transaction,
-      clusterIndex: clusterIndex
+      clusterIndex: clusterIndex,
+      hueristics: this.getHueristics(transaction)
     });
     this.renderTransactionFlow();
   }
@@ -166,7 +176,8 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   private prependBranchTransaction(transaction: Transaction, branchIndex: number, clusterIndex: number): void {
     this.branchesArray[branchIndex].unshift({
       transaction: transaction,
-      clusterIndex: clusterIndex
+      clusterIndex: clusterIndex,
+      hueristics: this.getHueristics(transaction)
     });
     console.log('branchesArray', this.branchesArray);
     this.renderTransactionFlow();
@@ -264,6 +275,23 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
         this.prependBranchTransaction(prevTx, branchIndex, clusterIndex);  
       });
     });
+  }
+
+  private getHueristics(tx: Transaction): HueristicType[] {
+    const hueristics: HueristicType[] = [HueristicType.change];
+    // if multiple inputs, apply cio
+    if (tx.vin.length > 1) {
+      hueristics.push(HueristicType.cio);
+    }
+    // if reused, apply reused
+    for (let i = 0; i < tx.vout.length; i++) {
+      const output = tx.vout[i];
+      if (output.scriptpubkey_address === this.addressString || 
+          output.scriptpubkey === getScriptPubKey(this.addressString)) {
+        hueristics.push(HueristicType.reused);
+      }
+    }
+    return hueristics;
   }
   
   // Helper method needed by component

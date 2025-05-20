@@ -41,6 +41,9 @@ export class ClusterDrawService {
   // Add tooltip element reference
   private tooltipElement: HTMLElement;
 
+  // Add a private property to store transaction objects by txid
+  private _transactionMap: {[txid: string]: any} = {};
+
   constructor() {}
 
   /**
@@ -61,6 +64,21 @@ export class ClusterDrawService {
     if (tooltipElement) {
       this.tooltipElement = tooltipElement;
     }
+    
+    // Reset transaction map
+    this._transactionMap = {};
+    
+    // Build transaction map for tooltip lookup
+    displayedTransactions.forEach(txObj => {
+      this._transactionMap[txObj.transaction.txid] = txObj;
+    });
+    
+    // Also add branch transactions to the map
+    branchesArray.forEach(branch => {
+      branch.forEach(txObj => {
+        this._transactionMap[txObj.transaction.txid] = txObj;
+      });
+    });
     
     const svg = clusterSvg.nativeElement;
     const g = svg.querySelector('g');
@@ -116,7 +134,12 @@ export class ClusterDrawService {
       
       let firstTxData: FirstTxData = null;
       if (index === 0) {
-        if (this.isCoinbase(tx)) return;
+        if (this.isCoinbase(tx)) {
+          this.createHorizontalArrow(g, x - this.horizontalSpacing, y, x, y);
+          const midpointX = x - this.horizontalSpacing/2;
+          this.createTransactionSquare(g, midpointX, y, tx.txid);
+          return;
+        }
         // for first tx, need to render input node(s)
         // first determine if the output to the original address is change
         // if its last vout in tx, then its change
@@ -349,16 +372,45 @@ export class ClusterDrawService {
   private showTooltip(txid: string, event: any): void {
     if (!this.tooltipElement) return;
     
+    // Find the transaction object by txid to get heuristics
+    const txObj = this.findTransactionObjectByTxid(txid);
+    
     // Format the transaction ID for display
     const formattedTxid = `${txid.substring(0, 8)}...${txid.substring(txid.length - 8)}`;
     
-    // Create tooltip content
-    this.tooltipElement.innerHTML = `
+    // Create tooltip content with heuristics if available
+    let tooltipContent = `
       <div>
         <strong>Transaction:</strong><br>
         <span style="font-family: monospace;">${formattedTxid}</span>
       </div>
     `;
+    
+    // Add heuristics information if available
+    if (txObj && txObj.hueristics && txObj.hueristics.length > 0) {
+      tooltipContent += `<div style="margin-top: 5px;"><strong>Heuristics:</strong><br>`;
+      
+      txObj.hueristics.forEach(heuristic => {
+        let heuristicText = '';
+        switch(heuristic) {
+          case 0: // HueristicType.cio
+            heuristicText = 'Common Input Ownership';
+            break;
+          case 1: // HueristicType.change
+            heuristicText = 'Change';
+            break;
+          case 2: // HueristicType.reused
+            heuristicText = 'Cluster Address';
+            break;
+        }
+        tooltipContent += `<span style="display: block; margin-left: 5px;">• ${heuristicText}</span>`;
+      });
+      
+      tooltipContent += `</div>`;
+    }
+    
+    // Set tooltip content
+    this.tooltipElement.innerHTML = tooltipContent;
     
     // Show tooltip
     this.tooltipElement.style.opacity = '1';
@@ -555,5 +607,14 @@ export class ClusterDrawService {
       }
     }
     return 'Unknown Address';
+  }
+
+  /**
+   * Find transaction object by txid from displayed transactions or branches
+   */
+  private findTransactionObjectByTxid(txid: string): any {
+    // This method will be populated with transaction data during rendering
+    if (!this._transactionMap) return null;
+    return this._transactionMap[txid] || null;
   }
 }
