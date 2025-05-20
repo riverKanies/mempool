@@ -469,7 +469,7 @@ export class ClusterDrawService {
   private updateTooltipPosition(event: any): void {
     if (!this.tooltipElement) return;
     
-    const offset = 10; // Reduced offset from cursor
+    const offset = 20; // Reduced offset from cursor
     
     // Get mouse position relative to the viewport
     const mouseX = event.clientX;
@@ -490,7 +490,7 @@ export class ClusterDrawService {
     // Calculate position to ensure tooltip stays within viewport
     // Position tooltip above and to the right of cursor by default
     let left = mouseX + offset + scrollX;
-    let top = mouseY - tooltipHeight - offset + scrollY - 350; // 350 is approximate y position of svg container
+    let top = mouseY - tooltipHeight - offset + scrollY - 300; // 350 is approximate y position of svg container
     
     // If positioning above would go off the top of the screen, position below instead
     if (mouseY - tooltipHeight - offset < 0) {
@@ -705,21 +705,20 @@ export class ClusterDrawService {
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       
       // Calculate control points for a nice curve
-      const controlX1 = startX - 50;
-      const controlY1 = startY - 50;
-      const controlX2 = endX - 50;
-      const controlY2 = endY - 50;
+      const controlX1 = startX - 30;
+      const controlY1 = startY - 30;
+      const controlX2 = endX - 30;
+      const controlY2 = endY - 30;
       
       // Create the path data for a cubic Bezier curve
       const pathData = `M ${startX} ${startY} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${endX} ${endY}`;
       
       path.setAttribute('d', pathData);
-      path.setAttribute('stroke', '#ff9800'); // Orange color for the connection
+      path.setAttribute('stroke', 'rgba(255, 152, 0, 0.5)'); // Semi-transparent orange for the connection
       path.setAttribute('stroke-width', '3');
       path.setAttribute('fill', 'none');
-      path.setAttribute('stroke-dasharray', '5,5'); // Dashed line
+      // path.setAttribute('stroke-dasharray', '5,5'); // Dashed line
       path.setAttribute('class', 'connection-curve');
-      path.setAttribute('marker-end', 'url(#arrowhead)');
       
       // Add the path to the SVG
       parent.appendChild(path);
