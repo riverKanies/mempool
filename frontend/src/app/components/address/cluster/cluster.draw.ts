@@ -246,11 +246,18 @@ export class ClusterDrawService {
       circle.setAttribute('stroke-width', this.clusterNodeStyles.strokeWidth);
       circle.setAttribute('cursor', 'pointer');
       // Add hover effect with JavaScript since we can't use CSS :hover
-      circle.addEventListener('mouseenter', () => {
+      circle.addEventListener('mouseenter', (event) => {
         circle.setAttribute('fill', this.clusterNodeStyles.fillHover);
+        this.showNodeTooltip(txid, address, type, event);
+      });
+      circle.addEventListener('mousemove', (event) => {
+        if (this.tooltipElement) {
+          this.updateTooltipPosition(event);
+        }
       });
       circle.addEventListener('mouseleave', () => {
         circle.setAttribute('fill', this.clusterNodeStyles.fill);
+        this.hideTooltip();
       });
     } else {
       circle.setAttribute('class', 'external-node');
@@ -259,11 +266,18 @@ export class ClusterDrawService {
       circle.setAttribute('stroke-width', this.externalNodeStyles.strokeWidth);
       circle.setAttribute('cursor', 'pointer');
       // Add hover effect with JavaScript
-      circle.addEventListener('mouseenter', () => {
+      circle.addEventListener('mouseenter', (event) => {
         circle.setAttribute('fill', this.externalNodeStyles.fillHover);
+        this.showNodeTooltip(txid, address, type, event);
+      });
+      circle.addEventListener('mousemove', (event) => {
+        if (this.tooltipElement) {
+          this.updateTooltipPosition(event);
+        }
       });
       circle.addEventListener('mouseleave', () => {
         circle.setAttribute('fill', this.externalNodeStyles.fill);
+        this.hideTooltip();
       });
     }
     
@@ -364,6 +378,42 @@ export class ClusterDrawService {
     });
     
     parent.appendChild(square);
+  }
+  
+  /**
+   * Show tooltip with node details
+   */
+  private showNodeTooltip(txid: string, address: string, type: string, event: any): void {
+    if (!this.tooltipElement) return;
+    
+    // Format the address for display
+    const formattedAddress = address.length > 20 
+      ? `${address.substring(0, 10)}...${address.substring(address.length - 10)}`
+      : address;
+    
+    // Create tooltip content
+    let tooltipContent = `
+      <div>
+        <strong>${type === 'cluster' ? 'Cluster' : 'External'} Address:</strong><br>
+        <span style="font-family: monospace;">${formattedAddress}</span>
+      </div>
+    `;
+
+    if (type === 'cluster') {
+      tooltipContent += `
+        <div style="margin-top: 5px;">
+          <strong>Click to fetch next transaction -></strong>
+        </div>
+      `;
+      
+    }
+    
+    // Set tooltip content
+    this.tooltipElement.innerHTML = tooltipContent;
+    
+    // Show tooltip
+    this.tooltipElement.style.opacity = '1';
+    this.updateTooltipPosition(event);
   }
   
   /**
