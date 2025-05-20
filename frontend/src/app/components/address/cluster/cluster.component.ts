@@ -10,7 +10,7 @@ import { ClusterDrawService } from './cluster.draw';
 
 // prev in external: http://localhost:4200/address/1AqtQTfkngLf7P7TPdXZkWAhs5cqN7t7Fw
 
-export enum HueristicType {
+export enum HeuristicType {
   cio,
   change,
   reused
@@ -20,7 +20,7 @@ export enum HueristicType {
 export interface TransactionObject {
   transaction: Transaction;
   clusterIndex: number;
-  hueristics: HueristicType[];
+  heuristics: HeuristicType[];
 }
 
 @Component({
@@ -75,7 +75,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       this.displayedTransactions = [{
         transaction: this.firstTransaction,
         clusterIndex: clusterIndex,
-        hueristics: this.getHueristics(this.firstTransaction)
+        heuristics: this.getHeuristics(this.firstTransaction)
       }];
       
       // After data is loaded, render the visualization
@@ -158,7 +158,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
       this.displayedTransactions.push({
         transaction: transaction,
         clusterIndex: clusterIndex,
-        hueristics: this.getHueristics(transaction)
+        heuristics: this.getHeuristics(transaction)
       });
       this.renderTransactionFlow();
     }
@@ -168,7 +168,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     this.displayedTransactions.unshift({
       transaction: transaction,
       clusterIndex: clusterIndex,
-      hueristics: this.getHueristics(transaction)
+      heuristics: this.getHeuristics(transaction)
     });
     this.renderTransactionFlow();
   }
@@ -177,7 +177,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     this.branchesArray[branchIndex].unshift({
       transaction: transaction,
       clusterIndex: clusterIndex,
-      hueristics: this.getHueristics(transaction)
+      heuristics: this.getHeuristics(transaction)
     });
     console.log('branchesArray', this.branchesArray);
     this.renderTransactionFlow();
@@ -277,21 +277,21 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     });
   }
 
-  private getHueristics(tx: Transaction): HueristicType[] {
-    const hueristics: HueristicType[] = [HueristicType.change];
+  private getHeuristics(tx: Transaction): HeuristicType[] {
+    const heuristics: HeuristicType[] = [HeuristicType.change];
     // if multiple inputs, apply cio
     if (tx.vin.length > 1) {
-      hueristics.push(HueristicType.cio);
+      heuristics.push(HeuristicType.cio);
     }
     // if reused, apply reused
     for (let i = 0; i < tx.vout.length; i++) {
       const output = tx.vout[i];
       if (output.scriptpubkey_address === this.addressString || 
           output.scriptpubkey === getScriptPubKey(this.addressString)) {
-        hueristics.push(HueristicType.reused);
+        heuristics.push(HeuristicType.reused);
       }
     }
-    return hueristics;
+    return heuristics;
   }
   
   // Helper method needed by component

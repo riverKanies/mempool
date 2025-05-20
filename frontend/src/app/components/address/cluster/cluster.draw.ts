@@ -387,19 +387,19 @@ export class ClusterDrawService {
     `;
     
     // Add heuristics information if available
-    if (txObj && txObj.hueristics && txObj.hueristics.length > 0) {
+    if (txObj && txObj.heuristics && txObj.heuristics.length > 0) {
       tooltipContent += `<div style="margin-top: 5px;"><strong>Heuristics:</strong><br>`;
       
-      txObj.hueristics.forEach(heuristic => {
+      txObj.heuristics.forEach(heuristic => {
         let heuristicText = '';
         switch(heuristic) {
-          case 0: // HueristicType.cio
+          case 0: // HeuristicType.cio
             heuristicText = 'Common Input Ownership';
             break;
-          case 1: // HueristicType.change
+          case 1: // HeuristicType.change
             heuristicText = 'Change';
             break;
-          case 2: // HueristicType.reused
+          case 2: // HeuristicType.reused
             heuristicText = 'Cluster Address';
             break;
         }
