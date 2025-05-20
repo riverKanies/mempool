@@ -237,6 +237,9 @@ export class ClusterDrawService {
     circle.setAttribute('cx', x.toString());
     circle.setAttribute('cy', y.toString());
     circle.setAttribute('r', this.nodeRadius.toString());
+    circle.setAttribute('data-x', x.toString());
+    circle.setAttribute('data-y', y.toString());
+    circle.setAttribute('data-address', address);
     
     // Apply styles directly to the element
     if (type === 'cluster') {
@@ -249,10 +252,12 @@ export class ClusterDrawService {
       circle.addEventListener('mouseenter', (event) => {
         circle.setAttribute('fill', this.clusterNodeStyles.fillHover);
         this.showNodeTooltip(txid, address, type, event);
+        this.drawConnectionCurve(parent, circle);
       });
       circle.addEventListener('mouseleave', () => {
         circle.setAttribute('fill', this.clusterNodeStyles.fill);
         this.hideTooltip();
+        this.removeConnectionCurve(parent);
       });
     } else {
       circle.setAttribute('class', 'external-node');
@@ -264,10 +269,12 @@ export class ClusterDrawService {
       circle.addEventListener('mouseenter', (event) => {
         circle.setAttribute('fill', this.externalNodeStyles.fillHover);
         this.showNodeTooltip(txid, address, type, event);
+        this.drawConnectionCurve(parent, circle);
       });
       circle.addEventListener('mouseleave', () => {
         circle.setAttribute('fill', this.externalNodeStyles.fill);
         this.hideTooltip();
+        this.removeConnectionCurve(parent);
       });
     }
     
@@ -650,5 +657,92 @@ export class ClusterDrawService {
     // This method will be populated with transaction data during rendering
     if (!this._transactionMap) return null;
     return this._transactionMap[txid] || null;
+  }
+
+  /**
+   * Draw curved connections between the hovered node and all nodes with the same address
+   */
+  private drawConnectionCurve(parent: SVGElement, hoveredNode: SVGCircleElement): void {
+    // Remove any existing connection curves
+    this.removeConnectionCurve(parent);
+    
+    // Get the position and address of the hovered node
+    const x1 = parseFloat(hoveredNode.getAttribute('cx'));
+    const y1 = parseFloat(hoveredNode.getAttribute('cy'));
+    const hoveredAddress = hoveredNode.getAttribute('data-address');
+    
+    if (!hoveredAddress) return;
+    
+    // Find all nodes with the same address
+    const matchingNodes = this.findNodesWithSameAddress(parent, hoveredNode, hoveredAddress);
+    
+    if (matchingNodes.length === 0) return;
+    
+    // Draw a curve to each matching node
+    matchingNodes.forEach(node => {
+      // Get the position of the matching node
+      const x2 = parseFloat(node.getAttribute('cx'));
+      const y2 = parseFloat(node.getAttribute('cy'));
+      
+      // Calculate the starting and ending points at 45-degree angles
+      const radius = this.nodeRadius;
+      const angle = Math.PI / 4; // 45 degrees in radians
+      
+      // Calculate starting point (top-left of first node)
+      const startX = x1 - radius * Math.cos(angle);
+      const startY = y1 - radius * Math.sin(angle);
+      
+      // Calculate ending point (top-left of second node)
+      const endX = x2 - radius * Math.cos(angle);
+      const endY = y2 - radius * Math.sin(angle);
+      
+      // Create the curved path
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      
+      // Calculate control points for a nice curve
+      const controlX1 = startX - 50;
+      const controlY1 = startY - 50;
+      const controlX2 = endX - 50;
+      const controlY2 = endY - 50;
+      
+      // Create the path data for a cubic Bezier curve
+      const pathData = `M ${startX} ${startY} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${endX} ${endY}`;
+      
+      path.setAttribute('d', pathData);
+      path.setAttribute('stroke', '#ff9800'); // Orange color for the connection
+      path.setAttribute('stroke-width', '3');
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke-dasharray', '5,5'); // Dashed line
+      path.setAttribute('class', 'connection-curve');
+      path.setAttribute('marker-end', 'url(#arrowhead)');
+      
+      // Add the path to the SVG
+      parent.appendChild(path);
+    });
+  }
+
+  /**
+   * Find all nodes with the same address as the hovered node
+   */
+  private findNodesWithSameAddress(parent: SVGElement, hoveredNode: SVGCircleElement, address: string): SVGCircleElement[] {
+    // Get all nodes
+    const nodes = Array.from(parent.querySelectorAll('circle'));
+    
+    // Filter out the hovered node and find nodes with matching address
+    return nodes.filter(node => {
+      if (node === hoveredNode) return false;
+      const nodeAddress = node.getAttribute('data-address');
+      return nodeAddress === address;
+    }) as SVGCircleElement[];
+  }
+
+  /**
+   * Remove all connection curves
+   */
+  private removeConnectionCurve(parent: SVGElement): void {
+    const existingCurves = parent.querySelectorAll('.connection-curve');
+    existingCurves.forEach(curve => {
+      parent.removeChild(curve);
+    });
   }
 }
