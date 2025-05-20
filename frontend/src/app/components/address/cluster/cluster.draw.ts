@@ -105,10 +105,6 @@ export class ClusterDrawService {
       const clusterAddress = this.getAddressFromOutput(tx.vout[clusterIndex]);
       this.createNode(g, x, y, tx.txid, 'cluster', clusterAddress, false, false, onNodeClick);
       
-
-      this.createHorizontalArrow(g, x - this.horizontalSpacing, y, x, y);
-      
-      
       let firstTxData: FirstTxData = null;
       if (index === 0) {
         if (this.isCoinbase(tx)) return;
@@ -160,6 +156,10 @@ export class ClusterDrawService {
         // Create S-shaped connection to external payment
         this.createSCurve(g, x - this.horizontalSpacing*3/4, y, x, externalY);
       }
+
+      this.createHorizontalArrow(g, x - this.horizontalSpacing, y, x, y);
+      const midpointX = x - this.horizontalSpacing/2;
+      this.createTransactionSquare(g, midpointX, y, tx.txid);
     });
   }
 
@@ -291,6 +291,42 @@ export class ClusterDrawService {
     if (renderArrow) path.setAttribute('marker-end', 'url(#arrowhead)');
     path.setAttribute('class', 'cluster-link');
     parent.appendChild(path);
+  }
+  
+  /**
+   * Creates a square node to represent a transaction
+   */
+  private createTransactionSquare(
+    parent: SVGElement,
+    x: number,
+    y: number,
+    txid: string
+  ) {
+    const squareSize = 15; // Size of the transaction square
+    const square = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    square.setAttribute('x', (x - squareSize/2).toString());
+    square.setAttribute('y', (y - squareSize/2).toString());
+    square.setAttribute('width', squareSize.toString());
+    square.setAttribute('height', squareSize.toString());
+    square.setAttribute('fill', '#fff');
+    square.setAttribute('stroke', '#fff');
+    square.setAttribute('stroke-width', '1px');
+    square.setAttribute('data-txid', txid);  square.setAttribute('cursor', 'pointer');
+  
+    // Add hover effect with JavaScript
+    square.addEventListener('mouseenter', () => {
+      square.setAttribute('fill', '#ffb74d'); // Lighter orange on hover
+    });
+    square.addEventListener('mouseleave', () => {
+      square.setAttribute('fill', '#fff'); // Back to original color
+    });
+    
+    // Add tooltip with truncated txid
+    const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+    title.textContent = `Transaction: ${txid.substring(0, 8)}...`;
+    square.appendChild(title);
+    
+    parent.appendChild(square);
   }
   
   /**
