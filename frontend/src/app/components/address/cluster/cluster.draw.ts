@@ -38,6 +38,9 @@ export class ClusterDrawService {
     strokeWidth: '2'
   };
 
+  // Add tooltip element reference
+  private tooltipElement: HTMLElement;
+
   constructor() {}
 
   /**
@@ -49,9 +52,15 @@ export class ClusterDrawService {
     branches: string[],
     branchesArray: TransactionObject[][],
     addressString: string,
-    onNodeClick: (txid: string, address: string, backtracking: boolean, isBranch: boolean) => void
+    onNodeClick: (txid: string, address: string, backtracking: boolean, isBranch: boolean) => void,
+    tooltipElement?: HTMLElement
   ) {
     if (!clusterSvg || !displayedTransactions.length) return;
+    
+    // Store tooltip element reference
+    if (tooltipElement) {
+      this.tooltipElement = tooltipElement;
+    }
     
     const svg = clusterSvg.nativeElement;
     const g = svg.querySelector('g');
@@ -311,22 +320,102 @@ export class ClusterDrawService {
     square.setAttribute('fill', '#fff');
     square.setAttribute('stroke', '#fff');
     square.setAttribute('stroke-width', '1px');
-    square.setAttribute('data-txid', txid);  square.setAttribute('cursor', 'pointer');
+    square.setAttribute('data-txid', txid);
+    square.setAttribute('cursor', 'pointer');
   
     // Add hover effect with JavaScript
     square.addEventListener('mouseenter', () => {
       square.setAttribute('fill', '#ffb74d'); // Lighter orange on hover
+      this.showTooltip(txid, event);
     });
+    
+    square.addEventListener('mousemove', (event) => {
+      if (this.tooltipElement) {
+        this.updateTooltipPosition(event);
+      }
+    });
+    
     square.addEventListener('mouseleave', () => {
       square.setAttribute('fill', '#fff'); // Back to original color
+      this.hideTooltip();
     });
     
-    // Add tooltip with truncated txid
-    const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-    title.textContent = `Transaction: ${txid.substring(0, 8)}...`;
-    square.appendChild(title);
-    
     parent.appendChild(square);
+  }
+  
+  /**
+   * Show tooltip with transaction details
+   */
+  private showTooltip(txid: string, event: any): void {
+    if (!this.tooltipElement) return;
+    
+    // Format the transaction ID for display
+    const formattedTxid = `${txid.substring(0, 8)}...${txid.substring(txid.length - 8)}`;
+    
+    // Create tooltip content
+    this.tooltipElement.innerHTML = `
+      <div>
+        <strong>Transaction:</strong><br>
+        <span style="font-family: monospace;">${formattedTxid}</span>
+      </div>
+    `;
+    
+    // Show tooltip
+    this.tooltipElement.style.opacity = '1';
+    this.updateTooltipPosition(event);
+  }
+  
+  /**
+   * Update tooltip position based on mouse coordinates
+   */
+  private updateTooltipPosition(event: any): void {
+    if (!this.tooltipElement) return;
+    
+    const offset = 10; // Reduced offset from cursor
+    
+    // Get mouse position relative to the viewport
+    const mouseX = event.clientX;
+    const mouseY = event.clientY;
+    
+    // Account for window scroll position
+    const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+    const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+    
+    // Get tooltip dimensions
+    const tooltipWidth = this.tooltipElement.offsetWidth;
+    const tooltipHeight = this.tooltipElement.offsetHeight;
+    
+    // Get viewport dimensions
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    
+    // Calculate position to ensure tooltip stays within viewport
+    // Position tooltip above and to the right of cursor by default
+    let left = mouseX + offset + scrollX;
+    let top = mouseY - tooltipHeight - offset + scrollY - 350; // 350 is approximate y position of svg container
+    
+    // If positioning above would go off the top of the screen, position below instead
+    if (mouseY - tooltipHeight - offset < 0) {
+      top = mouseY + offset + scrollY;
+    }
+    
+    // Adjust if tooltip would go off right edge
+    if (mouseX + offset + tooltipWidth > viewportWidth) {
+      left = mouseX - tooltipWidth - offset + scrollX;
+    }
+    
+    // Set tooltip position
+    this.tooltipElement.style.left = `${left}px`;
+    this.tooltipElement.style.top = `${top}px`;
+  }
+  
+  /**
+   * Hide tooltip
+   */
+  private hideTooltip(): void {
+    if (this.tooltipElement) {
+      this.tooltipElement.style.opacity = '0';
+    }
   }
   
   /**

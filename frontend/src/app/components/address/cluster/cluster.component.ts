@@ -26,6 +26,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   @Input() addressString: string;
   @ViewChild('clusterSvg') clusterSvg: ElementRef<SVGSVGElement>;
   @ViewChild('svgContainer') svgContainer: ElementRef;
+  @ViewChild('tooltip') tooltipElement: ElementRef;
   
   firstTransaction: Transaction | null = null;
   isLoading = true;
@@ -100,7 +101,8 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
         } else {
           this.fetchNextTransaction(txid, address);
         }
-      }
+      },
+      this.tooltipElement?.nativeElement
     );
     
     if (dimensions) {
