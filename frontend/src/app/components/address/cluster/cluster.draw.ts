@@ -732,6 +732,7 @@ export class ClusterDrawService {
     return nodes.filter(node => {
       if (node === hoveredNode) return false;
       const nodeAddress = node.getAttribute('data-address');
+      if (nodeAddress.length < 12) return false;// match only actual addresses, not other labels
       return nodeAddress === address;
     }) as SVGCircleElement[];
   }
