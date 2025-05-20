@@ -165,17 +165,22 @@ export class ClusterDrawService {
           }
         }
         
-        this.createNode(g, x - this.horizontalSpacing, additionalY, tx.txid, firstTxData?.type || 'cluster', additionalInputsLabel, true, true, onNodeClick);
-        
         // Create S-shaped connection to external payment
         this.createSCurve(g, x - this.horizontalSpacing, additionalY, x - (this.horizontalSpacing/4), y, false);
 
         // Only render sub-branches from the main branch
         if (isMainBranch) {
           const branchIndex = branches.indexOf(additionalInputsLabel);
-          if (branchIndex > -1) {
+          if (branchIndex > -1 && branchesArray[branchIndex].length > 0) {
+            // Skip creating the node since it will be rendered by the sub-branch
             this.renderSubBranch(branchIndex, additionalY, x - this.horizontalSpacing, g, branchesArray, onNodeClick);
+          } else {
+            // Only create the node if it's not going to be rendered as part of a sub-branch
+            this.createNode(g, x - this.horizontalSpacing, additionalY, tx.txid, firstTxData?.type || 'cluster', additionalInputsLabel, true, true, onNodeClick);
           }
+        } else {
+          // Always create the node for non-main branches
+          this.createNode(g, x - this.horizontalSpacing, additionalY, tx.txid, firstTxData?.type || 'cluster', additionalInputsLabel, true, true, onNodeClick);
         }
       }
 
