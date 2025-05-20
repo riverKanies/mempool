@@ -250,11 +250,6 @@ export class ClusterDrawService {
         circle.setAttribute('fill', this.clusterNodeStyles.fillHover);
         this.showNodeTooltip(txid, address, type, event);
       });
-      circle.addEventListener('mousemove', (event) => {
-        if (this.tooltipElement) {
-          this.updateTooltipPosition(event);
-        }
-      });
       circle.addEventListener('mouseleave', () => {
         circle.setAttribute('fill', this.clusterNodeStyles.fill);
         this.hideTooltip();
@@ -269,11 +264,6 @@ export class ClusterDrawService {
       circle.addEventListener('mouseenter', (event) => {
         circle.setAttribute('fill', this.externalNodeStyles.fillHover);
         this.showNodeTooltip(txid, address, type, event);
-      });
-      circle.addEventListener('mousemove', (event) => {
-        if (this.tooltipElement) {
-          this.updateTooltipPosition(event);
-        }
       });
       circle.addEventListener('mouseleave', () => {
         circle.setAttribute('fill', this.externalNodeStyles.fill);
@@ -364,12 +354,6 @@ export class ClusterDrawService {
     square.addEventListener('mouseenter', () => {
       square.setAttribute('fill', '#ffb74d'); // Lighter orange on hover
       this.showTooltip(txid, event);
-    });
-    
-    square.addEventListener('mousemove', (event) => {
-      if (this.tooltipElement) {
-        this.updateTooltipPosition(event);
-      }
     });
     
     square.addEventListener('mouseleave', () => {
