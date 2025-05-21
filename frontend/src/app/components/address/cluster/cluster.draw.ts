@@ -469,15 +469,12 @@ export class ClusterDrawService {
   private updateTooltipPosition(event: any): void {
     if (!this.tooltipElement) return;
     
-    const offset = 20; // Reduced offset from cursor
+    const offsetX = 50; // Offset from cursor for X axis
+    const offsetY = -20; // Offset from cursor for Y axis
     
     // Get mouse position relative to the viewport
     const mouseX = event.clientX;
     const mouseY = event.clientY;
-    
-    // Account for window scroll position
-    const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
-    const scrollY = window.pageYOffset || document.documentElement.scrollTop;
     
     // Get tooltip dimensions
     const tooltipWidth = this.tooltipElement.offsetWidth;
@@ -487,19 +484,25 @@ export class ClusterDrawService {
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
     
+    // Get SVG container position
+    const svgElement = event.target.closest('svg');
+    const svgRect = svgElement ? svgElement.getBoundingClientRect() : null;
+    const svgOffsetX = svgRect ? svgRect.left : 0;
+    const svgOffsetY = svgRect ? svgRect.top : 0;
+    
     // Calculate position to ensure tooltip stays within viewport
     // Position tooltip above and to the right of cursor by default
-    let left = mouseX + offset + scrollX;
-    let top = mouseY - tooltipHeight - offset + scrollY - 300; // 350 is approximate y position of svg container
+    let left = mouseX + offsetX + scrollX - svgOffsetX;
+    let top = mouseY - tooltipHeight - offsetY - svgOffsetY;
     
     // If positioning above would go off the top of the screen, position below instead
-    if (mouseY - tooltipHeight - offset < 0) {
-      top = mouseY + offset + scrollY;
+    if (mouseY - tooltipHeight - offsetY < 0) {
+      top = mouseY + offsetY + scrollY - svgOffsetY;
     }
     
     // Adjust if tooltip would go off right edge
-    if (mouseX + offset + tooltipWidth > viewportWidth) {
-      left = mouseX - tooltipWidth - offset + scrollX;
+    if (mouseX + offsetX + tooltipWidth > viewportWidth) {
+      left = mouseX - tooltipWidth - offsetX - svgOffsetX;
     }
     
     // Set tooltip position
