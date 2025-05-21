@@ -20,17 +20,17 @@ export class ClusterDrawService {
   
   // Node and link styles
   private readonly clusterNodeStyles = {
-    fill: '#4caf50',
+    fill: '#2e7d32',
     fillHover: '#81c784',
-    stroke: '#2e7d32',
-    strokeWidth: '2px'
+    stroke: '#4caf50',
+    strokeWidth: '4px'
   };
 
   private readonly externalNodeStyles = {
-    fill: '#2196f3',
-    fillHover: '#64b5f6',
-    stroke: '#0d47a1',
-    strokeWidth: '2px'
+    fill: '#757575',
+    fillHover: '#bdbdbd',
+    stroke: '#9e9e9e',
+    strokeWidth: '4px'
   };
 
   private readonly linkStyles = {
@@ -249,7 +249,7 @@ export class ClusterDrawService {
     // Apply styles directly to the element
     if (type === 'cluster') {
       circle.setAttribute('class', 'cluster-node');
-      circle.setAttribute('fill', this.clusterNodeStyles.fill);
+      circle.setAttribute('fill', addressToColor(address));
       circle.setAttribute('stroke', this.clusterNodeStyles.stroke);
       circle.setAttribute('stroke-width', this.clusterNodeStyles.strokeWidth);
       circle.setAttribute('cursor', 'pointer');
@@ -260,7 +260,7 @@ export class ClusterDrawService {
         this.drawConnectionCurve(parent, circle);
       });
       circle.addEventListener('mouseleave', () => {
-        circle.setAttribute('fill', this.clusterNodeStyles.fill);
+        circle.setAttribute('fill', addressToColor(address));
         this.hideTooltip();
         this.removeConnectionCurve(parent);
       });
@@ -750,4 +750,31 @@ export class ClusterDrawService {
       parent.removeChild(curve);
     });
   }
+}
+
+function addressToColor(address) {
+  // Use a simple hash function to convert the address to a number
+  let hash = 0;
+  
+  // Loop through each character in the address
+  for (let i = 0; i < address.length; i++) {
+    // Get character code and add to hash
+    const char = address.charCodeAt(i);
+    // Simple hash algorithm: multiply by 31 and add character code
+    hash = ((hash << 5) - hash) + char;
+    // Convert to 32-bit integer
+    hash = hash & hash;
+  }
+  
+  // Convert to positive number and take modulo 16777216 (0xFFFFFF + 1)
+  // This ensures we get a value that fits in 6 hex digits
+  const positiveHash = Math.abs(hash) % 16777216;
+  
+  // Convert to hex and pad with zeros if needed
+  let hexColor = positiveHash.toString(16);
+  while (hexColor.length < 6) {
+    hexColor = '0' + hexColor;
+  }
+  
+  return '#' + hexColor;
 }
