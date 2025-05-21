@@ -319,6 +319,8 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   private buildTransactionChain(): void {
     // Clear any existing transactions
     this.displayedTransactions = [];
+    this.branches = [];
+    this.branchesArray = [];
     
     // Create a map of txid -> transaction for quick lookups
     const txMap = new Map<string, Transaction>();
@@ -344,6 +346,9 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
         heuristics: this.getHeuristics(currentTx)
       });
       
+      // Check for potential branches in this transaction
+      this.checkForBranches(currentTx);
+      console.log('branches', this.branches,this.branchesArray);
       // Check if this transaction's output is spent by another transaction in our list
       if (currentTx._outspends && 
           currentTx._outspends[clusterIndex] && 
@@ -358,7 +363,45 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     }
     
     console.log(`Built transaction chain with ${this.displayedTransactions.length} connected transactions`);
+    console.log(`Found ${this.branches.length} potential branches`);
     this.renderTransactionFlow();
+  }
+
+  // Helper method to check for potential branches in a transaction
+  private checkForBranches(tx: Transaction): void {
+    // Check if transaction has multiple inputs (potential branch)
+    if (tx.vin.length >= 2) {
+      // For the first transaction in our chain, we need to identify which input
+      // corresponds to our main address flow and which should be branches
+      
+      // First, check if any input directly matches our address string
+      let mainInputIndex = tx.vin.findIndex(input => {
+        const inputAddress = this.getAddressFromOutput(input.prevout);
+        return inputAddress === this.addressString;
+      });
+      
+      // If no direct match was found, assume the first input is the main one
+      // This matches the logic in cluster.draw.ts
+      if (mainInputIndex === -1) {
+        mainInputIndex = 0;
+      }
+      
+      // Create branches for all other inputs
+      for (let i = 0; i < tx.vin.length; i++) {
+        // Skip the main input
+        if (i === mainInputIndex) continue;
+        
+        const input = tx.vin[i];
+        const output = input.prevout;
+        const inputAddress = this.getAddressFromOutput(output);
+        
+        // Add as branch if not already included and not the original address
+        if (inputAddress && !this.branches.includes(inputAddress)) {
+          this.branches.push(inputAddress);
+          this.branchesArray.push([]);
+        }
+      }
+    }
   }
 }
 
