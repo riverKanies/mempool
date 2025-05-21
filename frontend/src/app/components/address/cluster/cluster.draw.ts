@@ -427,6 +427,10 @@ export class ClusterDrawService {
     isBranch: boolean,
     onNodeClick: (txid: string, address: string, backtracking: boolean, isBranch: boolean) => void
   ) {
+    // Check if there's a connected transaction before creating the fetchable node
+    const connectedTxid = this.getConnectedTransactionId(txid, address, backtracking);
+    if (!connectedTxid) return; // Don't create fetchable node if there's no connected transaction
+    
     // Determine direction based on backtracking
     const direction = backtracking ? -1 : 1;
     const lineLength = this.horizontalSpacing / 2;
