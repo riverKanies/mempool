@@ -324,11 +324,7 @@ export class ClusterDrawService {
     
     circle.setAttribute('data-txid', txid);
     
-    // Update click event to fetch next transaction instead of navigating
-    circle.addEventListener('click', () => {
-      if (type !== 'cluster') return;
-      onNodeClick(txid, address, backtracking, isBranch);
-    });
+    // Remove click event from node
     
     parent.appendChild(circle);
     
@@ -352,6 +348,159 @@ export class ClusterDrawService {
       
       parent.appendChild(text);
     }
+    
+    // Add fetchable transaction node if this is a cluster node with an address (not a count)
+    // and only if the transaction isn't already in the displayed list
+    if (type === 'cluster' && label?.address && !label?.count && !this.isTransactionAlreadyDisplayed(txid, address, backtracking)) {
+      this.createFetchableTxNode(
+        parent,
+        x,
+        y,
+        txid,
+        address,
+        backtracking,
+        isBranch,
+        onNodeClick
+      );
+    }
+  }
+  
+  /**
+   * Checks if a transaction is already displayed in the visualization
+   */
+  private isTransactionAlreadyDisplayed(txid: string, address: string, backtracking: boolean): boolean {
+    // We need to check if the transaction we would fetch is already displayed
+    const nextTxid = this.getConnectedTransactionId(txid, address, backtracking);
+    return nextTxid ? !!this._transactionMap[nextTxid] : false;
+  }
+  
+  /**
+   * Gets the ID of the connected transaction (previous or next)
+   * @param txid Current transaction ID
+   * @param address Address to track
+   * @param backtracking Whether we're looking for previous (true) or next (false) transaction
+   * @returns The connected transaction ID or null if not found
+   */
+  public getConnectedTransactionId(txid: string, address: string, backtracking: boolean): string | null {
+    // Get the transaction object from our map
+    const txObj = this._transactionMap[txid];
+    if (!txObj) return null;
+    
+    const tx = txObj.transaction;
+    
+    if (backtracking) {
+      // Find the input that corresponds to the address we're interested in
+      const relevantInput = tx.vin.find(input => {
+        const inputAddress = this.getAddressFromOutput(input.prevout);
+        return inputAddress === address;
+      });
+      
+      if (!relevantInput) return null;
+      
+      // Return the previous transaction ID
+      return relevantInput.txid;
+    } else {
+      // Forward tracking - get the next transaction
+      const clusterIndex = txObj.clusterIndex;
+      
+      // Check if outspends are available
+      if (!tx._outspends || !tx._outspends[clusterIndex]) return null;
+      
+      const outspend = tx._outspends[clusterIndex];
+      if (!outspend.txid) return null;
+      
+      // Return the next transaction ID
+      return outspend.txid;
+    }
+  }
+  
+  /**
+   * Creates a fetchable transaction node connected to an address node
+   */
+  private createFetchableTxNode(
+    parent: SVGElement,
+    x: number,
+    y: number,
+    txid: string,
+    address: string,
+    backtracking: boolean,
+    isBranch: boolean,
+    onNodeClick: (txid: string, address: string, backtracking: boolean, isBranch: boolean) => void
+  ) {
+    // Determine direction based on backtracking
+    const direction = backtracking ? -1 : 1;
+    const lineLength = this.horizontalSpacing / 2;
+    
+    // Calculate position for the fetchable node
+    const fetchNodeX = x + (direction * lineLength);
+    
+    // Create dotted line to fetchable node
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', x.toString());
+    line.setAttribute('y1', y.toString());
+    line.setAttribute('x2', fetchNodeX.toString());
+    line.setAttribute('y2', y.toString());
+    line.setAttribute('stroke', this.linkStyles.stroke);
+    line.setAttribute('stroke-width', this.linkStyles.strokeWidth);
+    line.setAttribute('stroke-dasharray', '5,5'); // Dotted line
+    line.setAttribute('class', 'fetchable-link');
+    parent.appendChild(line);
+    
+    // Create fetchable node (square with dotted outline)
+    const squareSize = 15; // Size of the transaction square
+    const square = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    square.setAttribute('x', (fetchNodeX - squareSize/2).toString());
+    square.setAttribute('y', (y - squareSize/2).toString());
+    square.setAttribute('width', squareSize.toString());
+    square.setAttribute('height', squareSize.toString());
+    square.setAttribute('fill', 'transparent');
+    square.setAttribute('stroke', '#fff');
+    square.setAttribute('stroke-width', '1px');
+    square.setAttribute('stroke-dasharray', '2,2'); // Dotted outline
+    square.setAttribute('data-txid', txid);
+    square.setAttribute('data-address', address);
+    square.setAttribute('cursor', 'pointer');
+    square.setAttribute('class', 'fetchable-node');
+  
+    // Add hover effect with JavaScript
+    square.addEventListener('mouseenter', (event) => {
+      square.setAttribute('fill', 'rgba(255, 255, 255, 0.2)'); // Semi-transparent white on hover
+      this.showFetchableNodeTooltip(event, backtracking);
+    });
+    
+    square.addEventListener('mouseleave', () => {
+      square.setAttribute('fill', 'transparent'); // Back to transparent
+      this.hideTooltip();
+    });
+    
+    // Add click event to fetch transaction
+    square.addEventListener('click', () => {
+      onNodeClick(txid, address, backtracking, isBranch);
+    });
+    
+    parent.appendChild(square);
+  }
+  
+  /**
+   * Show tooltip for fetchable transaction node
+   */
+  private showFetchableNodeTooltip(event: any, backtracking: boolean): void {
+    if (!this.tooltipElement) return;
+    
+    // Create tooltip content based on direction
+    const tooltipContent = `
+      <div>
+        <strong>Fetch Transaction</strong><br>
+        <span>Click to load the ${backtracking ? 'previous' : 'next'} transaction</span>
+      </div>
+    `;
+    
+    // Set tooltip content
+    this.tooltipElement.innerHTML = tooltipContent;
+    
+    // Show tooltip
+    this.tooltipElement.style.opacity = '1';
+    this.updateTooltipPosition(event);
   }
   
   private createHorizontalArrow(parent: SVGElement, x1: number, y1: number, x2: number, y2: number) {
@@ -444,21 +593,13 @@ export class ClusterDrawService {
         ? `${address.substring(0, 10)}...${address.substring(address.length - 10)}`
         : address;
       
-      // Create tooltip content
+      // Create tooltip content - removed the "Click to fetch" text since we now have a separate node for that
       let tooltipContent = `
         <div>
           <strong>${type === 'cluster' ? 'Cluster' : 'External'} Address:</strong><br>
           <span style="font-family: monospace;">${formattedAddress}</span>
         </div>
       `;
-
-      if (type === 'cluster') {
-        tooltipContent += `
-          <div style="margin-top: 5px;">
-            <strong>Click to fetch next transaction -></strong>
-          </div>
-        `;
-      }
       
       // Set tooltip content
       this.tooltipElement.innerHTML = tooltipContent;

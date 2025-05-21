@@ -180,21 +180,26 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   // Update fetchNextTransaction to use TransactionObject
   private fetchNextTransaction(txid: string, address: string): void {
     console.log('fetchNextTransaction', address);
-    const txIndex = this.displayedTransactions.findIndex(t => t.transaction.txid === txid);
     
-    const currentTxObj = this.displayedTransactions[txIndex];
-    const currentTx = currentTxObj.transaction;
-    const outputIndex = currentTxObj.clusterIndex;
-
-    const outspend = currentTx._outspends[outputIndex];
+    // Use the generalized method to get the next transaction ID
+    const nextTxid = this.clusterDrawService.getConnectedTransactionId(txid, address, false);
+    if (!nextTxid) {
+      console.error('No next transaction found for:', txid);
+      return;
+    }
 
     // Fetch the transaction that spent this specific output
-    this.electrsApiService.getTransaction$(outspend.txid).subscribe(nextTx => {
+    this.electrsApiService.getTransaction$(nextTxid).subscribe(nextTx => {
       // Verify that the input of this transaction matches our expected vin
+      const currentTxObj = this.displayedTransactions.find(t => t.transaction.txid === txid);
+      if (!currentTxObj) {
+        console.error('Current transaction not found:', txid);
+        return;
+      }
+      
+      const outputIndex = currentTxObj.clusterIndex;
       const matchingInput = nextTx.vin.find(input => {
-        console.log('Checking input:', input);
-        console.log('Looking for txid:', currentTx.txid, 'vout:', outputIndex);
-        return input.txid === currentTx.txid && input.vout === outputIndex;
+        return input.txid === txid && input.vout === outputIndex;
       });
       
       if (matchingInput) {
@@ -205,8 +210,6 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
           nextTx._outspends = outspends;
           
           // create new branch if addl input in cluster
-          // http://localhost:4200/address/1JHnexW73ZmTho4F7xYd8Qp5e89qLXrvZg
-          // ^ great to test branching
           if (nextTx.vin.length == 2) {
             for (let i = 0; i < nextTx.vin.length; i++) {
               const output = nextTx.vin[i].prevout;
@@ -223,24 +226,31 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
         });
       } else {
         console.log('Next transaction does not reference the expected input');
-        console.log('Current tx:', currentTx.txid);
-        console.log('Output index:', outputIndex);
-        console.log('Next tx inputs:', nextTx.vin);
       }
     });
   }
 
   private fetchPrevTransaction(txid: string, address: string): void {
-    const txIndex = this.displayedTransactions.findIndex(t => t.transaction.txid === txid);
-    const currentTx = this.displayedTransactions[txIndex].transaction;
-    const prevTxId = currentTx.vin[0].txid;
-    console.log('tx ids', txid, prevTxId);
+    // Use the generalized method to get the previous transaction ID
+    const prevTxid = this.clusterDrawService.getConnectedTransactionId(txid, address, true);
+    if (!prevTxid) {
+      console.error('No previous transaction found for:', txid);
+      return;
+    }
+    
+    console.log('Fetching previous transaction:', prevTxid);
 
-    this.electrsApiService.getTransaction$(prevTxId).subscribe(prevTx => {
-      // find clusterIndex
+    this.electrsApiService.getTransaction$(prevTxid).subscribe(prevTx => {
+      // find clusterIndex - the output that matches our address
       const clusterIndex = prevTx.vout.findIndex(vout => {
-        return address == this.getAddressFromOutput(vout);
+        return address === this.getAddressFromOutput(vout);
       });
+      
+      if (clusterIndex === -1) {
+        console.error('Could not find output matching address:', address);
+        return;
+      }
+      
       this.electrsApiService.getOutspends$(prevTx.txid).subscribe(outspends => {
         prevTx._outspends = outspends;
         this.prependTransaction(prevTx, clusterIndex);  
@@ -249,21 +259,33 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   }
 
   private fetchBranchPrevTransaction(txid: string, address: string): void {
-    const txIndex = this.displayedTransactions.findIndex(t => t.transaction.txid === txid);
-    const currentTx = this.displayedTransactions[txIndex].transaction;
-    const prevTxId = currentTx.vin.find(vin => {
-      const inputAddress = this.getAddressFromOutput(vin.prevout);
-      return inputAddress === address;
-    }).txid;
-    console.log('tx ids', txid, prevTxId);
+    // Use the generalized method to get the previous transaction ID
+    const prevTxid = this.clusterDrawService.getConnectedTransactionId(txid, address, true);
+    if (!prevTxid) {
+      console.error('No previous transaction found for branch:', txid);
+      return;
+    }
+    
+    console.log('Fetching branch previous transaction:', prevTxid);
 
-    this.electrsApiService.getTransaction$(prevTxId).subscribe(prevTx => {
+    this.electrsApiService.getTransaction$(prevTxid).subscribe(prevTx => {
       // find branch index
       const branchIndex = this.branches.indexOf(address);
-      // find clusterIndex
+      if (branchIndex === -1) {
+        console.error('Branch not found for address:', address);
+        return;
+      }
+      
+      // find clusterIndex - the output that matches our branch address
       const clusterIndex = prevTx.vout.findIndex(vout => {
-        return address == this.getAddressFromOutput(vout);
-      })
+        return address === this.getAddressFromOutput(vout);
+      });
+      
+      if (clusterIndex === -1) {
+        console.error('Could not find output matching branch address:', address);
+        return;
+      }
+      
       this.electrsApiService.getOutspends$(prevTx.txid).subscribe(outspends => {
         prevTx._outspends = outspends;
         this.prependBranchTransaction(prevTx, branchIndex, clusterIndex);  
