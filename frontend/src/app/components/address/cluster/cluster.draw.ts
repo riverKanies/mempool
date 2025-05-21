@@ -99,7 +99,7 @@ export class ClusterDrawService {
     
     // Calculate SVG dimensions based on transaction count
     this.svgWidth = Math.max(800, orderedTransactions.length * this.horizontalSpacing + 100);
-    this.svgHeight = 700;
+    this.svgHeight = 500;
     
     // Render the main transaction flow
     this.renderBranchFlow(

@@ -41,7 +41,7 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   private branches: string[] = [];
   private branchesArray: TransactionObject[][] = [];
   // SVG zoom and pan properties
-  private scale = 1;
+  private scale = 0.8;
   private translateX = 0;
   private translateY = 0;
   
@@ -52,12 +52,13 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   
   // View box for SVG
   get viewBox(): string {
-    return `0 0 ${this.svgWidth || 800} ${this.svgHeight || 300}`;
+    const scaleFactor = 1.25;
+    return `0 0 ${this.svgWidth * scaleFactor} ${this.svgHeight * scaleFactor}`;
   }
 
   // SVG dimensions
   private svgWidth = 800;
-  private svgHeight = 700;
+  private svgHeight = 500;
 
   constructor(
     private electrsApiService: ElectrsApiService,
