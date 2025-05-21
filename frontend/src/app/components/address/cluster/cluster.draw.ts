@@ -7,6 +7,12 @@ interface FirstTxData {
   type: 'cluster' | 'external';
 }
 
+interface Label {
+  address?: string;
+  count?: number;
+  displayText?: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -130,7 +136,7 @@ export class ClusterDrawService {
       
       // Create node for the address we're focusing on (using the cluster index)
       const clusterAddress = this.getAddressFromOutput(tx.vout[clusterIndex]);
-      this.createNode(g, x, y, tx.txid, 'cluster', clusterAddress, false, false, onNodeClick);
+      this.createNode(g, x, y, tx.txid, 'cluster', { address: clusterAddress }, false, false, onNodeClick);
       
       let firstTxData: FirstTxData = null;
       if (index === 0) {
@@ -148,7 +154,7 @@ export class ClusterDrawService {
           type: clusterIndex === tx.vout.length - 1 ? 'cluster' : 'external'
         }
         // create input node
-        this.createNode(g, x - this.horizontalSpacing, y, tx.txid, firstTxData.type, firstTxData.inputAddress, true, false, onNodeClick);
+        this.createNode(g, x - this.horizontalSpacing, y, tx.txid, firstTxData.type, { address: firstTxData.inputAddress }, true, false, onNodeClick);
       }
 
       const additionalInputsLabel = this.getAdditionalInputsLabel(index, firstTxData?.inputAddress, transactions);
@@ -158,7 +164,7 @@ export class ClusterDrawService {
         
         // For main branch, handle sub-branches
         if (isMainBranch) {
-          const branchIndex = branches.indexOf(additionalInputsLabel);
+          const branchIndex = branches.indexOf(additionalInputsLabel.address);
           if (branchIndex > -1) {
             const branchSpacing = (1+branchIndex) * 3 * this.verticalSpacing;
             additionalY = y + branchSpacing;
@@ -170,17 +176,37 @@ export class ClusterDrawService {
 
         // Only render sub-branches from the main branch
         if (isMainBranch) {
-          const branchIndex = branches.indexOf(additionalInputsLabel);
+          const branchIndex = branches.indexOf(additionalInputsLabel.address);
           if (branchIndex > -1 && branchesArray[branchIndex].length > 0) {
             // Skip creating the node since it will be rendered by the sub-branch
             this.renderSubBranch(branchIndex, additionalY, x - this.horizontalSpacing, g, branchesArray, onNodeClick);
           } else {
             // Only create the node if it's not going to be rendered as part of a sub-branch
-            this.createNode(g, x - this.horizontalSpacing, additionalY, tx.txid, firstTxData?.type || 'cluster', additionalInputsLabel, true, true, onNodeClick);
+            this.createNode(
+              g, 
+              x - this.horizontalSpacing, 
+              additionalY, 
+              tx.txid, 
+              firstTxData?.type || 'cluster', 
+              additionalInputsLabel, 
+              true, 
+              true, 
+              onNodeClick
+            );
           }
         } else {
           // Always create the node for non-main branches
-          this.createNode(g, x - this.horizontalSpacing, additionalY, tx.txid, firstTxData?.type || 'cluster', additionalInputsLabel, true, true, onNodeClick);
+          this.createNode(
+            g, 
+            x - this.horizontalSpacing, 
+            additionalY, 
+            tx.txid, 
+            firstTxData?.type || 'cluster', 
+            additionalInputsLabel, 
+            true, 
+            true, 
+            onNodeClick
+          );
         }
       }
 
@@ -188,7 +214,17 @@ export class ClusterDrawService {
       if (externalOutputsLabel) {
         const externalY = y - this.verticalSpacing;
         
-        this.createNode(g, x, externalY, tx.txid, 'external', externalOutputsLabel, false, false, onNodeClick);
+        this.createNode(
+          g, 
+          x, 
+          externalY, 
+          tx.txid, 
+          'external', 
+          externalOutputsLabel, 
+          false, 
+          false, 
+          onNodeClick
+        );
         
         // Create S-shaped connection to external payment
         this.createSCurve(g, x - this.horizontalSpacing*3/4, y, x, externalY);
@@ -233,7 +269,7 @@ export class ClusterDrawService {
     y: number, 
     txid: string, 
     type: 'cluster' | 'external' = 'cluster', 
-    address: string = 'Unknown', 
+    label: Label,
     backtracking: boolean = false, 
     isBranch: boolean = false,
     onNodeClick: (txid: string, address: string, backtracking: boolean, isBranch: boolean) => void
@@ -244,23 +280,26 @@ export class ClusterDrawService {
     circle.setAttribute('r', this.nodeRadius.toString());
     circle.setAttribute('data-x', x.toString());
     circle.setAttribute('data-y', y.toString());
+    
+    const address = label?.address || '';
     circle.setAttribute('data-address', address);
     
     // Apply styles directly to the element
     if (type === 'cluster') {
+      const coinColor = label?.count ? this.clusterNodeStyles.fill : addressToColor(address);
       circle.setAttribute('class', 'cluster-node');
-      circle.setAttribute('fill', addressToColor(address));
+      circle.setAttribute('fill', coinColor);
       circle.setAttribute('stroke', this.clusterNodeStyles.stroke);
       circle.setAttribute('stroke-width', this.clusterNodeStyles.strokeWidth);
       circle.setAttribute('cursor', 'pointer');
       // Add hover effect with JavaScript since we can't use CSS :hover
       circle.addEventListener('mouseenter', (event) => {
         circle.setAttribute('fill', this.clusterNodeStyles.fillHover);
-        this.showNodeTooltip(txid, address, type, event);
+        this.showNodeTooltip(txid, label, type, event);
         this.drawConnectionCurve(parent, circle);
       });
       circle.addEventListener('mouseleave', () => {
-        circle.setAttribute('fill', addressToColor(address));
+        circle.setAttribute('fill', coinColor);
         this.hideTooltip();
         this.removeConnectionCurve(parent);
       });
@@ -273,7 +312,7 @@ export class ClusterDrawService {
       // Add hover effect with JavaScript
       circle.addEventListener('mouseenter', (event) => {
         circle.setAttribute('fill', this.externalNodeStyles.fillHover);
-        this.showNodeTooltip(txid, address, type, event);
+        this.showNodeTooltip(txid, label, type, event);
         this.drawConnectionCurve(parent, circle);
       });
       circle.addEventListener('mouseleave', () => {
@@ -293,23 +332,26 @@ export class ClusterDrawService {
     
     parent.appendChild(circle);
     
-    // Add tooltip with truncated address
-    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    text.setAttribute('x', x.toString());
-    text.setAttribute('y', (y + this.nodeRadius + 15).toString());
-    text.setAttribute('text-anchor', 'middle');
-    text.setAttribute('class', 'node-label');
-    text.setAttribute('fill', '#fff');
-    text.setAttribute('font-size', '12px');
-    text.setAttribute('user-select', 'none');
-    
-    // Display truncated address instead of txid
-    const displayText = address ? 
-      (address.length > 10 ? `...${address.substring(address.length - 5)}` : address) : 
-      'Unknown';
-    text.textContent = displayText;
-    
-    parent.appendChild(text);
+    // Add label text only if we have a count to display (for clusters of addresses)
+    if (label?.count) {
+      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      text.setAttribute('x', x.toString());
+      text.setAttribute('y', y.toString()); // Center vertically in the circle
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('dominant-baseline', 'middle'); // This ensures vertical centering
+      text.setAttribute('class', 'node-label');
+      text.setAttribute('fill', '#fff');
+      text.setAttribute('font-size', '12px');
+      text.setAttribute('font-weight', 'bold'); // Make text bold
+      text.setAttribute('user-select', 'none');
+      text.setAttribute('pointer-events', 'none'); // Make text transparent to mouse events
+      
+      // Generate display text based on type and count
+      const displayText = `${label.count}`;
+      text.textContent = displayText;
+      
+      parent.appendChild(text);
+    }
   }
   
   private createHorizontalArrow(parent: SVGElement, x1: number, y1: number, x2: number, y2: number) {
@@ -379,33 +421,48 @@ export class ClusterDrawService {
   /**
    * Show tooltip with node details
    */
-  private showNodeTooltip(txid: string, address: string, type: string, event: any): void {
+  private showNodeTooltip(txid: string, label: Label, type: string, event: any): void {
     if (!this.tooltipElement) return;
     
-    // Format the address for display
-    const formattedAddress = address.length > 20 
-      ? `${address.substring(0, 10)}...${address.substring(address.length - 10)}`
-      : address;
-    
-    // Create tooltip content
-    let tooltipContent = `
-      <div>
-        <strong>${type === 'cluster' ? 'Cluster' : 'External'} Address:</strong><br>
-        <span style="font-family: monospace;">${formattedAddress}</span>
-      </div>
-    `;
-
-    if (type === 'cluster') {
-      tooltipContent += `
-        <div style="margin-top: 5px;">
-          <strong>Click to fetch next transaction -></strong>
+    // Check if we have a count or address
+    if (label?.count) {
+      // Create tooltip content for multiple addresses
+      let tooltipContent = `
+        <div>
+          <strong>${type === 'cluster' ? 'Cluster' : 'External'} Addresses:</strong><br>
+          <span style="font-family: monospace;">${label.count} Addresses</span>
         </div>
       `;
       
+      // Set tooltip content
+      this.tooltipElement.innerHTML = tooltipContent;
+    } else {
+      const address = label?.address || '';
+      
+      // Format the address for display
+      const formattedAddress = address.length > 20 
+        ? `${address.substring(0, 10)}...${address.substring(address.length - 10)}`
+        : address;
+      
+      // Create tooltip content
+      let tooltipContent = `
+        <div>
+          <strong>${type === 'cluster' ? 'Cluster' : 'External'} Address:</strong><br>
+          <span style="font-family: monospace;">${formattedAddress}</span>
+        </div>
+      `;
+
+      if (type === 'cluster') {
+        tooltipContent += `
+          <div style="margin-top: 5px;">
+            <strong>Click to fetch next transaction -></strong>
+          </div>
+        `;
+      }
+      
+      // Set tooltip content
+      this.tooltipElement.innerHTML = tooltipContent;
     }
-    
-    // Set tooltip content
-    this.tooltipElement.innerHTML = tooltipContent;
     
     // Show tooltip
     this.tooltipElement.style.opacity = '1';
@@ -606,11 +663,16 @@ export class ClusterDrawService {
     return tx.vin.some(input => input.is_coinbase);
   }
   
-  private getAdditionalInputsLabel(txIndex: number, inputAddress: string, displayedTransactions: TransactionObject[]): string {
+  private getAdditionalInputsLabel(txIndex: number, inputAddress: string, displayedTransactions: TransactionObject[]): Label {
     const tx = displayedTransactions[txIndex].transaction;
-    if (tx.vin.length == 2) return this.findAdditionalInputAddress(txIndex, inputAddress, displayedTransactions);
+    if (tx.vin.length == 2) {
+      const address = this.findAdditionalInputAddress(txIndex, inputAddress, displayedTransactions);
+      return { address };
+    }
 
-    if (tx.vin.length > 2) return `Cluster ${tx.vin.length - 1}`;
+    if (tx.vin.length > 2) {
+      return { count: tx.vin.length - 1, displayText: `Cluster ${tx.vin.length - 1}` };
+    }
 
     return null;
   }
@@ -639,10 +701,15 @@ export class ClusterDrawService {
     return 'Unknown Address';
   }
 
-  private getExternalOutputsLabel(tx: Transaction, clusterIndex: number): string {
-    if (tx.vout.length == 2) return this.findExternalAddress(tx, clusterIndex);
+  private getExternalOutputsLabel(tx: Transaction, clusterIndex: number): Label {
+    if (tx.vout.length == 2) {
+      const address = this.findExternalAddress(tx, clusterIndex);
+      return { address };
+    }
 
-    if (tx.vout.length > 2) return `Batch ${tx.vout.length - 1}`;
+    if (tx.vout.length > 2) {
+      return { count: tx.vout.length - 1, displayText: `Batch ${tx.vout.length - 1}` };
+    }
 
     return null;
   }
