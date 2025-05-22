@@ -33,7 +33,7 @@
   <div class="node-details mb-3">
     <div class="card">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">Node Details</h5>
+        <h5 class="mb-0">Selected Node: {{ selectedNode.type ? (selectedNode.type === 'transaction' ? 'Transaction' : (selectedNode.data.type === 'cluster' ? 'Cluster Address' : 'External Address')) : '' }}</h5>
         <button *ngIf="selectedNode.type" class="btn btn-sm btn-link" (click)="clearSelectedNode()">
           <i class="fas fa-times"></i>
         </button>
@@ -44,29 +44,29 @@
         </ng-container>
         
         <ng-container *ngIf="selectedNode.type === 'transaction'">
-          <h6>Transaction</h6>
           <div class="mb-2">
             <strong>TXID:</strong>
-            <span class="monospace">{{ formatAddress(selectedNode.data.txid) }}</span>
+            <span class="monospace">{{ selectedNode.data.txid }}</span>
           </div>
           <div *ngIf="selectedNode.data.heuristics?.length">
-            <strong>Heuristics:</strong>
+            <strong>Heuristics Applied:</strong>
+            <small class="text-muted d-block">To determine which addresses are likely to be part of the same cluster, these heuristics were applied to the transaction</small>
             <ul class="list-unstyled ml-3">
               <li *ngFor="let heuristic of selectedNode.data.heuristics">
-                • {{ getHeuristicName(heuristic) }}
+                • <span title="{{ getHeuristicDescription(heuristic) }}">{{ getHeuristicName(heuristic) }}</span>
+                <small class="text-muted d-block ml-3">{{ getHeuristicDescription(heuristic) }}</small>
               </li>
             </ul>
           </div>
         </ng-container>
         
         <ng-container *ngIf="selectedNode.type === 'address'">
-          <h6>{{ selectedNode.data.type === 'cluster' ? 'Cluster' : 'External' }} Address</h6>
           <div *ngIf="selectedNode.data.count">
             <strong>Addresses:</strong> {{ selectedNode.data.count }}
           </div>
           <div *ngIf="selectedNode.data.address">
             <strong>Address:</strong>
-            <span class="monospace">{{ formatAddress(selectedNode.data.address) }}</span>
+            <span class="monospace">{{ selectedNode.data.address }}</span>
           </div>
         </ng-container>
       </div>

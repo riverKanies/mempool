@@ -434,12 +434,18 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
     }
   }
   
-  // Helper method to format address for display
-  formatAddress(address: string): string {
-    if (!address) return '';
-    return address.length > 20 
-      ? `${address.substring(0, 10)}...${address.substring(address.length - 10)}`
-      : address;
+  // Helper method to get detailed heuristic description
+  getHeuristicDescription(heuristicType: HeuristicType): string {
+    switch(heuristicType) {
+      case HeuristicType.cio:
+        return 'Assumes all input addresses in a transaction are controlled by the same entity.';
+      case HeuristicType.change:
+        return 'Identifies the most likely change output based on address reuse patterns and common conventions.';
+      case HeuristicType.reused:
+        return 'Address appears multiple times in the transaction history, indicating it belongs to the same cluster.';
+      default:
+        return '';
+    }
   }
 }
 
