@@ -1,5 +1,14 @@
 <div class="box">
-  
+  <div class="legend mt-3 d-flex justify-content-end">
+    <div class="d-flex align-items-center mr-4">
+      <div class="legend-circle cluster-node mr-2"></div>
+      <span i18n="address.cluster.address-node">Cluster Address</span>
+    </div>
+    <div class="d-flex align-items-center">
+      <div class="legend-circle external-node mr-2"></div>
+      <span i18n="address.cluster.external-node">External Address</span>
+    </div>
+  </div>
   
   <!-- Cluster visualization with zoom functionality -->
   <div class="cluster-visualization">
@@ -20,15 +29,48 @@
     <!-- Add tooltip div -->
     <div class="svg-tooltip" #tooltip></div>
   </div>
-  
-  <div class="legend mt-3">
-    <div class="d-flex align-items-center mb-2">
-      <div class="legend-circle cluster-node mr-2"></div>
-      <span i18n="address.cluster.address-node">Cluster Address</span>
-    </div>
-    <div class="d-flex align-items-center">
-      <div class="legend-circle external-node mr-2"></div>
-      <span i18n="address.cluster.external-node">External Address</span>
+  <!-- Node details section -->
+  <div class="node-details mb-3">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Node Details</h5>
+        <button *ngIf="selectedNode.type" class="btn btn-sm btn-link" (click)="clearSelectedNode()">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <div class="card-body">
+        <ng-container *ngIf="!selectedNode.type">
+          <p class="text-muted">Select a node to view details</p>
+        </ng-container>
+        
+        <ng-container *ngIf="selectedNode.type === 'transaction'">
+          <h6>Transaction</h6>
+          <div class="mb-2">
+            <strong>TXID:</strong>
+            <span class="monospace">{{ formatAddress(selectedNode.data.txid) }}</span>
+          </div>
+          <div *ngIf="selectedNode.data.heuristics?.length">
+            <strong>Heuristics:</strong>
+            <ul class="list-unstyled ml-3">
+              <li *ngFor="let heuristic of selectedNode.data.heuristics">
+                • {{ getHeuristicName(heuristic) }}
+              </li>
+            </ul>
+          </div>
+        </ng-container>
+        
+        <ng-container *ngIf="selectedNode.type === 'address'">
+          <h6>{{ selectedNode.data.type === 'cluster' ? 'Cluster' : 'External' }} Address</h6>
+          <div *ngIf="selectedNode.data.count">
+            <strong>Addresses:</strong> {{ selectedNode.data.count }}
+          </div>
+          <div *ngIf="selectedNode.data.address">
+            <strong>Address:</strong>
+            <span class="monospace">{{ formatAddress(selectedNode.data.address) }}</span>
+          </div>
+        </ng-container>
+      </div>
     </div>
   </div>
+
 </div> 

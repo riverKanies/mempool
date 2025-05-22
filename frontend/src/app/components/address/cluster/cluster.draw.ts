@@ -50,6 +50,9 @@ export class ClusterDrawService {
   // Add a private property to store transaction objects by txid
   private _transactionMap: {[txid: string]: any} = {};
 
+  // Add a property to track the selected node
+  private selectedNode: SVGElement = null;
+
   constructor() {}
 
   /**
@@ -62,6 +65,7 @@ export class ClusterDrawService {
     branchesArray: TransactionObject[][],
     addressString: string,
     onNodeClick: (txid: string, address: string, backtracking: boolean, isBranch: boolean) => void,
+    onNodeSelect: (nodeType: 'transaction' | 'address', data: any) => void,
     tooltipElement?: HTMLElement
   ) {
     if (!clusterSvg || !displayedTransactions.length) return;
@@ -110,6 +114,7 @@ export class ClusterDrawService {
       branches,
       branchesArray,
       onNodeClick,
+      onNodeSelect,
       true // isMainBranch
     );
     
@@ -127,6 +132,7 @@ export class ClusterDrawService {
     branches: string[],
     branchesArray: TransactionObject[][],
     onNodeClick: (txid: string, address: string, backtracking: boolean, isBranch: boolean) => void,
+    onNodeSelect: (nodeType: 'transaction' | 'address', data: any) => void,
     isMainBranch: boolean = false
   ) {
     transactions.forEach((txObj, index) => {
@@ -136,14 +142,14 @@ export class ClusterDrawService {
       
       // Create node for the address we're focusing on (using the cluster index)
       const clusterAddress = this.getAddressFromOutput(tx.vout[clusterIndex]);
-      this.createNode(g, x, y, tx.txid, 'cluster', { address: clusterAddress }, false, false, onNodeClick);
+      this.createNode(g, x, y, tx.txid, 'cluster', { address: clusterAddress }, false, false, onNodeClick, onNodeSelect);
       
       let firstTxData: FirstTxData = null;
       if (index === 0) {
         if (this.isCoinbase(tx)) {
           this.createHorizontalArrow(g, x - this.horizontalSpacing, y, x, y);
           const midpointX = x - this.horizontalSpacing/2;
-          this.createTransactionSquare(g, midpointX, y, tx.txid);
+          this.createTransactionSquare(g, midpointX, y, tx.txid, onNodeSelect);
           return;
         }
         // for first tx, need to render input node(s)
@@ -154,7 +160,7 @@ export class ClusterDrawService {
           type: clusterIndex === tx.vout.length - 1 ? 'cluster' : 'external'
         }
         // create input node
-        this.createNode(g, x - this.horizontalSpacing, y, tx.txid, firstTxData.type, { address: firstTxData.inputAddress }, true, false, onNodeClick);
+        this.createNode(g, x - this.horizontalSpacing, y, tx.txid, firstTxData.type, { address: firstTxData.inputAddress }, true, false, onNodeClick, onNodeSelect);
       }
 
       const additionalInputsLabel = this.getAdditionalInputsLabel(index, firstTxData?.inputAddress, transactions);
@@ -179,7 +185,7 @@ export class ClusterDrawService {
           const branchIndex = branches.indexOf(additionalInputsLabel.address);
           if (branchIndex > -1 && branchesArray[branchIndex].length > 0) {
             // Skip creating the node since it will be rendered by the sub-branch
-            this.renderSubBranch(branchIndex, additionalY, x - this.horizontalSpacing, g, branchesArray, onNodeClick);
+            this.renderSubBranch(branchIndex, additionalY, x - this.horizontalSpacing, g, branchesArray, onNodeClick, onNodeSelect);
           } else {
             // Only create the node if it's not going to be rendered as part of a sub-branch
             this.createNode(
@@ -191,7 +197,8 @@ export class ClusterDrawService {
               additionalInputsLabel, 
               true, 
               true, 
-              onNodeClick
+              onNodeClick,
+              onNodeSelect
             );
           }
         } else {
@@ -205,7 +212,8 @@ export class ClusterDrawService {
             additionalInputsLabel, 
             true, 
             true, 
-            onNodeClick
+            onNodeClick,
+            onNodeSelect
           );
         }
       }
@@ -223,7 +231,8 @@ export class ClusterDrawService {
           externalOutputsLabel, 
           false, 
           false, 
-          onNodeClick
+          onNodeClick,
+          onNodeSelect
         );
         
         // Create S-shaped connection to external payment
@@ -232,7 +241,7 @@ export class ClusterDrawService {
 
       this.createHorizontalArrow(g, x - this.horizontalSpacing, y, x, y);
       const midpointX = x - this.horizontalSpacing/2;
-      this.createTransactionSquare(g, midpointX, y, tx.txid);
+      this.createTransactionSquare(g, midpointX, y, tx.txid, onNodeSelect);
     });
   }
 
@@ -245,7 +254,8 @@ export class ClusterDrawService {
     branchX: number, 
     g: SVGElement, 
     branchesArray: TransactionObject[][],
-    onNodeClick: (txid: string, address: string, backtracking: boolean, isBranch: boolean) => void
+    onNodeClick: (txid: string, address: string, backtracking: boolean, isBranch: boolean) => void,
+    onNodeSelect: (nodeType: 'transaction' | 'address', data: any) => void
   ) {
     const branch = branchesArray[branchIndex];
     // Calculate starting X position for the branch (right to left)
@@ -259,6 +269,7 @@ export class ClusterDrawService {
       [], // No sub-branches for branches
       [], // No branch array needed
       onNodeClick,
+      onNodeSelect,
       false // Not a main branch
     );
   }
@@ -272,7 +283,8 @@ export class ClusterDrawService {
     label: Label,
     backtracking: boolean = false, 
     isBranch: boolean = false,
-    onNodeClick: (txid: string, address: string, backtracking: boolean, isBranch: boolean) => void
+    onNodeClick: (txid: string, address: string, backtracking: boolean, isBranch: boolean) => void,
+    onNodeSelect: (nodeType: 'transaction' | 'address', data: any) => void
   ) {
     const address = label?.address || '';
     // Add fetchable transaction node first if this is a cluster node with an address (not a count)
@@ -297,10 +309,13 @@ export class ClusterDrawService {
     circle.setAttribute('data-x', x.toString());
     circle.setAttribute('data-y', y.toString());
     circle.setAttribute('data-address', address);
+    circle.setAttribute('data-node-type', 'address');
     
+
+    const coinColor = label?.count ? this.clusterNodeStyles.fill : addressToColor(address);
+
     // Apply styles directly to the element
     if (type === 'cluster') {
-      const coinColor = label?.count ? this.clusterNodeStyles.fill : addressToColor(address);
       circle.setAttribute('class', 'cluster-node');
       circle.setAttribute('fill', coinColor);
       circle.setAttribute('stroke', this.clusterNodeStyles.stroke);
@@ -308,12 +323,16 @@ export class ClusterDrawService {
       circle.setAttribute('cursor', 'pointer');
       // Add hover effect with JavaScript since we can't use CSS :hover
       circle.addEventListener('mouseenter', (event) => {
-        circle.setAttribute('fill', this.clusterNodeStyles.fillHover);
+        if (circle !== this.selectedNode) {
+          circle.setAttribute('fill', this.clusterNodeStyles.fillHover);
+        }
         this.showNodeTooltip(txid, label, type, event);
         this.drawConnectionCurve(parent, circle);
       });
       circle.addEventListener('mouseleave', () => {
-        circle.setAttribute('fill', coinColor);
+        if (circle !== this.selectedNode) {
+          circle.setAttribute('fill', coinColor);
+        }
         this.hideTooltip();
         this.removeConnectionCurve(parent);
       });
@@ -325,12 +344,16 @@ export class ClusterDrawService {
       circle.setAttribute('cursor', 'pointer');
       // Add hover effect with JavaScript
       circle.addEventListener('mouseenter', (event) => {
-        circle.setAttribute('fill', this.externalNodeStyles.fillHover);
+        if (circle !== this.selectedNode) {
+          circle.setAttribute('fill', this.externalNodeStyles.fillHover);
+        }
         this.showNodeTooltip(txid, label, type, event);
         this.drawConnectionCurve(parent, circle);
       });
       circle.addEventListener('mouseleave', () => {
-        circle.setAttribute('fill', this.externalNodeStyles.fill);
+        if (circle !== this.selectedNode) {
+          circle.setAttribute('fill', this.externalNodeStyles.fill);
+        }
         this.hideTooltip();
         this.removeConnectionCurve(parent);
       });
@@ -338,7 +361,16 @@ export class ClusterDrawService {
     
     circle.setAttribute('data-txid', txid);
     
-    // Remove click event from node
+    // Add click event to select node
+    circle.addEventListener('click', () => {
+      this.selectNode(circle, type === 'cluster' ? coinColor : this.externalNodeStyles.fill);
+      onNodeSelect('address', {
+        address: address,
+        count: label?.count,
+        type: type,
+        txid: txid
+      });
+    });
     
     parent.appendChild(circle);
     
@@ -542,7 +574,8 @@ export class ClusterDrawService {
     parent: SVGElement,
     x: number,
     y: number,
-    txid: string
+    txid: string,
+    onNodeSelect: (nodeType: 'transaction' | 'address', data: any) => void
   ) {
     const squareSize = 15; // Size of the transaction square
     const square = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -552,19 +585,35 @@ export class ClusterDrawService {
     square.setAttribute('height', squareSize.toString());
     square.setAttribute('fill', '#fff');
     square.setAttribute('stroke', '#fff');
-    square.setAttribute('stroke-width', '1px');
+    square.setAttribute('stroke-width', '3px');
     square.setAttribute('data-txid', txid);
+    square.setAttribute('data-node-type', 'transaction');
     square.setAttribute('cursor', 'pointer');
   
     // Add hover effect with JavaScript
     square.addEventListener('mouseenter', () => {
-      square.setAttribute('fill', '#ffb74d'); // Lighter orange on hover
+      if (square !== this.selectedNode) {
+        square.setAttribute('fill', '#ffb74d'); // Lighter orange on hover
+      }
       this.showTooltip(txid, event);
     });
     
     square.addEventListener('mouseleave', () => {
-      square.setAttribute('fill', '#fff'); // Back to original color
+      if (square !== this.selectedNode) {
+        square.setAttribute('fill', '#fff'); // Back to original color
+      }
       this.hideTooltip();
+    });
+    
+    // Add click event to select node
+    square.addEventListener('click', () => {
+      this.selectNode(square, '#ffb74d');
+      const txObj = this.findTransactionObjectByTxid(txid);
+      onNodeSelect('transaction', {
+        txid: txid,
+        transaction: txObj?.transaction,
+        heuristics: txObj?.heuristics
+      });
     });
     
     parent.appendChild(square);
@@ -931,7 +980,6 @@ export class ClusterDrawService {
       path.setAttribute('stroke', 'rgba(255, 152, 0, 0.5)'); // Semi-transparent orange for the connection
       path.setAttribute('stroke-width', '3');
       path.setAttribute('fill', 'none');
-      // path.setAttribute('stroke-dasharray', '5,5'); // Dashed line
       path.setAttribute('class', 'connection-curve');
       
       // Add the path to the SVG
@@ -963,6 +1011,118 @@ export class ClusterDrawService {
     existingCurves.forEach(curve => {
       parent.removeChild(curve);
     });
+  }
+
+  /**
+   * Selects a node and highlights it
+   */
+  private selectNode(node: SVGElement, highlightColor: string): void {
+    // Deselect previous node if any
+    if (this.selectedNode) {
+      // Reset the fill color based on node type
+      if (this.selectedNode.tagName === 'circle') {
+        const nodeType = this.selectedNode.getAttribute('class');
+        const address = this.selectedNode.getAttribute('data-address');
+        if (nodeType === 'cluster-node') {
+          this.selectedNode.setAttribute('fill', address.length > 20 ? addressToColor(address) : this.clusterNodeStyles.fill);
+        } else {
+          this.selectedNode.setAttribute('fill', this.externalNodeStyles.fill);
+        }
+      } else if (this.selectedNode.tagName === 'rect') {
+        this.selectedNode.setAttribute('fill', '#fff');
+        this.selectedNode.setAttribute('stroke', '#fff');
+      }
+      
+      // Remove any existing animation
+      this.selectedNode.removeAttribute('filter');
+      // Reset stroke properties
+      // this.selectedNode.setAttribute('stroke-width', '3');
+      if (this.selectedNode.tagName === 'circle') {
+        const nodeType = this.selectedNode.getAttribute('class');
+        if (nodeType === 'cluster-node') {
+          this.selectedNode.setAttribute('stroke', this.clusterNodeStyles.stroke);
+        } else {
+          this.selectedNode.setAttribute('stroke', this.externalNodeStyles.stroke);
+        }
+      }
+      
+      // Remove any previous animation
+      const animation = this.selectedNode.querySelector('#pulse-animation');
+      if (animation) {
+        animation.remove();
+      }
+    }
+    
+    // Set new selected node
+    this.selectedNode = node;
+    
+    // Highlight the selected node with thick blue border and pulsing effect
+    node.setAttribute('fill', highlightColor);
+    node.setAttribute('stroke', '#37fef7');
+    // node.setAttribute('stroke-width', '4');
+    
+    // Create pulsing animation
+    const svg = node.ownerSVGElement;
+    const defs = svg.querySelector('defs') || svg.insertBefore(document.createElementNS('http://www.w3.org/2000/svg', 'defs'), svg.firstChild);
+    
+    // Check if filter already exists, remove it if it does
+    let existingFilter = defs.querySelector('#pulse-filter');
+    if (existingFilter) {
+      defs.removeChild(existingFilter);
+    }
+    
+    // Create filter for glow effect
+    const filter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+    filter.setAttribute('id', 'pulse-filter');
+    filter.innerHTML = `
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur" />
+      <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7" result="glow" />
+      <feBlend in="SourceGraphic" in2="glow" mode="normal" />
+    `;
+    defs.appendChild(filter);
+    
+    // Create animation
+    const animation = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+    animation.setAttribute('id', 'pulse-animation');
+    animation.setAttribute('attributeName', 'stroke-opacity');
+    animation.setAttribute('values', '1;0.6;1');
+    animation.setAttribute('dur', '1.5s');
+    animation.setAttribute('repeatCount', 'indefinite');
+    node.appendChild(animation);
+    
+    // Apply filter
+    node.setAttribute('filter', 'url(#pulse-filter)');
+  }
+  
+  /**
+   * Clears the selected node
+   */
+  public clearSelectedNode(): void {
+    if (this.selectedNode) {
+      // Reset the fill color based on node type
+      if (this.selectedNode.tagName === 'circle') {
+        const nodeType = this.selectedNode.getAttribute('class');
+        const address = this.selectedNode.getAttribute('data-address');
+        if (nodeType === 'cluster-node') {
+          this.selectedNode.setAttribute('fill', address.length > 20 ? addressToColor(address) : this.clusterNodeStyles.fill);
+        } else {
+          this.selectedNode.setAttribute('fill', this.externalNodeStyles.fill);
+        }
+      } else if (this.selectedNode.tagName === 'rect') {
+        this.selectedNode.setAttribute('fill', '#fff');
+      }
+      
+      // Remove selection styling
+      this.selectedNode.removeAttribute('filter');
+      // this.selectedNode.setAttribute('stroke-width', '4');
+      
+      // Remove animation
+      const animation = this.selectedNode.querySelector('#pulse-animation');
+      if (animation) {
+        animation.remove();
+      }
+      this.selectedNode = null;
+    }
   }
 }
 

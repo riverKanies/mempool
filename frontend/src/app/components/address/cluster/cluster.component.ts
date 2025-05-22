@@ -60,6 +60,12 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
   private svgWidth = 800;
   private svgHeight = 500;
 
+  // Add properties for selected node details
+  selectedNode: {
+    type: 'transaction' | 'address' | null;
+    data: any;
+  } = { type: null, data: null };
+
   constructor(
     private electrsApiService: ElectrsApiService,
     private clusterDrawService: ClusterDrawService
@@ -103,6 +109,10 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
         } else {
           this.fetchNextTransaction(txid, address);
         }
+      },
+      (nodeType, data) => {
+        // Handle node selection
+        this.selectedNode = { type: nodeType, data: data };
       },
       this.tooltipElement?.nativeElement
     );
@@ -402,6 +412,34 @@ export class ClusterComponent implements OnChanges, AfterViewInit {
         }
       }
     }
+  }
+
+  // Add method to clear selected node
+  clearSelectedNode(): void {
+    this.selectedNode = { type: null, data: null };
+    this.clusterDrawService.clearSelectedNode();
+  }
+  
+  // Helper method to get heuristic name
+  getHeuristicName(heuristicType: HeuristicType): string {
+    switch(heuristicType) {
+      case HeuristicType.cio:
+        return 'Common Input Ownership';
+      case HeuristicType.change:
+        return 'Change';
+      case HeuristicType.reused:
+        return 'Cluster Address';
+      default:
+        return 'Unknown';
+    }
+  }
+  
+  // Helper method to format address for display
+  formatAddress(address: string): string {
+    if (!address) return '';
+    return address.length > 20 
+      ? `${address.substring(0, 10)}...${address.substring(address.length - 10)}`
+      : address;
   }
 }
 
