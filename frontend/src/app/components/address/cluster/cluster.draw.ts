@@ -274,14 +274,28 @@ export class ClusterDrawService {
     isBranch: boolean = false,
     onNodeClick: (txid: string, address: string, backtracking: boolean, isBranch: boolean) => void
   ) {
+    const address = label?.address || '';
+    // Add fetchable transaction node first if this is a cluster node with an address (not a count)
+    // and only if the transaction isn't already in the displayed list
+    if (type === 'cluster' && label?.address && !label?.count && !this.isTransactionAlreadyDisplayed(txid, address, backtracking)) {
+      this.createFetchableTxNode(
+        parent,
+        x,
+        y,
+        txid,
+        address,
+        backtracking,
+        isBranch,
+        onNodeClick
+      );
+    }
+
     const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     circle.setAttribute('cx', x.toString());
     circle.setAttribute('cy', y.toString());
     circle.setAttribute('r', this.nodeRadius.toString());
     circle.setAttribute('data-x', x.toString());
     circle.setAttribute('data-y', y.toString());
-    
-    const address = label?.address || '';
     circle.setAttribute('data-address', address);
     
     // Apply styles directly to the element
@@ -347,21 +361,6 @@ export class ClusterDrawService {
       text.textContent = displayText;
       
       parent.appendChild(text);
-    }
-    
-    // Add fetchable transaction node if this is a cluster node with an address (not a count)
-    // and only if the transaction isn't already in the displayed list
-    if (type === 'cluster' && label?.address && !label?.count && !this.isTransactionAlreadyDisplayed(txid, address, backtracking)) {
-      this.createFetchableTxNode(
-        parent,
-        x,
-        y,
-        txid,
-        address,
-        backtracking,
-        isBranch,
-        onNodeClick
-      );
     }
   }
   
@@ -495,7 +494,7 @@ export class ClusterDrawService {
     const tooltipContent = `
       <div>
         <strong>Fetch Transaction</strong><br>
-        <span>Click to load the ${backtracking ? 'previous' : 'next'} transaction</span>
+        <span>Click to load the ${backtracking ? 'previous' : 'next'} transaction in the cluster</span>
       </div>
     `;
     
