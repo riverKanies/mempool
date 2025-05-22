@@ -8,6 +8,15 @@
       <div class="legend-circle external-node mr-2"></div>
       <span i18n="address.cluster.external-node">External Address</span>
     </div>
+    <div class="d-flex align-items-center ml-3">
+      <fa-icon 
+        [icon]="['fas', 'circle-info']"
+        class="text-muted"
+        placement="left-top"
+        ngbTooltip="This graphing tool uses chain analysis heuristics to analyze transactions and determine which addresses are likely to be owned by the same entity (in the same cluster). Click around to inspect nodes and fetch more transactions to expand the cluster."
+        i18n-ngbTooltip="address.cluster.tooltip">
+      </fa-icon>
+    </div>
   </div>
   
   <!-- Cluster visualization with zoom functionality -->
