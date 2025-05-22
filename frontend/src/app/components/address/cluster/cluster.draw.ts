@@ -115,7 +115,8 @@ export class ClusterDrawService {
       branchesArray,
       onNodeClick,
       onNodeSelect,
-      true // isMainBranch
+      true, // isMainBranch
+      addressString // Pass the original address string
     );
     
     return { width: this.svgWidth, height: this.svgHeight };
@@ -133,7 +134,8 @@ export class ClusterDrawService {
     branchesArray: TransactionObject[][],
     onNodeClick: (txid: string, address: string, backtracking: boolean, isBranch: boolean) => void,
     onNodeSelect: (nodeType: 'transaction' | 'address', data: any) => void,
-    isMainBranch: boolean = false
+    isMainBranch: boolean = false,
+    originalAddress: string = null  // Parameter to identify original address
   ) {
     transactions.forEach((txObj, index) => {
       const tx = txObj.transaction;
@@ -142,7 +144,26 @@ export class ClusterDrawService {
       
       // Create node for the address we're focusing on (using the cluster index)
       const clusterAddress = this.getAddressFromOutput(tx.vout[clusterIndex]);
-      this.createNode(g, x, y, tx.txid, 'cluster', { address: clusterAddress }, false, false, onNodeClick, onNodeSelect);
+      
+      // Check if this is the original address, accounting for script pubkey format
+      const isOriginalAddressNode = originalAddress && 
+        (clusterAddress === originalAddress || 
+         clusterAddress === this.getScriptPubKey(originalAddress) ||
+         originalAddress === this.getScriptPubKey(clusterAddress));
+      
+      this.createNode(
+        g, 
+        x, 
+        y, 
+        tx.txid, 
+        'cluster', 
+        { address: clusterAddress }, 
+        false, 
+        false, 
+        onNodeClick, 
+        onNodeSelect,
+        isOriginalAddressNode  // Pass the flag to identify original address
+      );
       
       let firstTxData: FirstTxData = null;
       if (index === 0) {
@@ -284,7 +305,8 @@ export class ClusterDrawService {
     backtracking: boolean = false, 
     isBranch: boolean = false,
     onNodeClick: (txid: string, address: string, backtracking: boolean, isBranch: boolean) => void,
-    onNodeSelect: (nodeType: 'transaction' | 'address', data: any) => void
+    onNodeSelect: (nodeType: 'transaction' | 'address', data: any) => void,
+    isOriginalAddress: boolean = false  // New parameter to identify original address
   ) {
     const address = label?.address || '';
     // Add fetchable transaction node first if this is a cluster node with an address (not a count)
@@ -311,6 +333,10 @@ export class ClusterDrawService {
     circle.setAttribute('data-address', address);
     circle.setAttribute('data-node-type', 'address');
     
+    // Add original address marker if needed
+    if (isOriginalAddress) {
+      this.createOriginalAddressMarker(parent, x, y - this.nodeRadius - 10);
+    }
 
     const coinColor = label?.count ? this.clusterNodeStyles.fill : addressToColor(address);
 
@@ -1123,6 +1149,34 @@ export class ClusterDrawService {
       }
       this.selectedNode = null;
     }
+  }
+
+  /**
+   * Creates a yellow triangle marker above the original address node
+   */
+  private createOriginalAddressMarker(parent: SVGElement, x: number, y: number): void {
+    const triangleSize = 10;
+    
+    // Create a triangle pointing down
+    const triangle = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    const points = [
+      `${x},${y}`,
+      `${x - triangleSize},${y - triangleSize}`,
+      `${x + triangleSize},${y - triangleSize}`
+    ].join(' ');
+    
+    triangle.setAttribute('points', points);
+    triangle.setAttribute('fill', '#FFD700'); // Gold/yellow color
+    triangle.setAttribute('stroke', '#FFA500'); // Orange border
+    triangle.setAttribute('stroke-width', '1');
+    triangle.setAttribute('class', 'original-address-marker');
+    
+    parent.appendChild(triangle);
+  }
+
+  // Helper function to convert between address and script pubkey format
+  private getScriptPubKey(address: string): string {
+    return address.length === 66 ? '21' + address + 'ac' : '41' + address + 'ac';
   }
 }
 
